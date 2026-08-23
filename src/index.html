@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; connect-src 'self'; form-action 'self';">
+<title>Operator Helper</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header id="titlebar">
+  <div class="brand">🎬 <b>Operator&nbsp;Helper</b></div>
+  <nav id="tabs">
+    <button class="tab active" data-tab="assistant">🤖 Ассистент</button>
+    <button class="tab" data-tab="music">🎵 Музыка</button>
+    <button class="tab" data-tab="tipmenu">💎 Тип-меню</button>
+    <button class="tab" data-tab="settings">⚙️ Настройки</button>
+  </nav>
+  <label class="ontop" title="Держать окно поверх стрима и браузера">
+    <input type="checkbox" id="onTop"> 📌 поверх всех окон
+  </label>
+</header>
+
+<main>
+
+<!-- ===================== АССИСТЕНТ ===================== -->
+<section id="tab-assistant" class="tab-page active">
+  <aside id="chatListPane">
+    <button id="addChatBtn" class="btn primary wide">＋ Добавить чат</button>
+    <button id="clearAllChatsBtn" class="btn danger wide" title="Удалить все чаты и их истории безвозвратно">🧹 Очистить все чаты</button>
+    <div id="chatList"></div>
+    <div class="pane-note">Один чат = один пользователь.<br>Не смешивайте разных юзеров в одном чате!</div>
+  </aside>
+
+  <section id="chatWorkArea">
+    <div id="noChatPlaceholder">
+      <div class="big-emoji">💬</div>
+      <h2>Чатов пока нет</h2>
+      <p>Нажмите «＋ Добавить чат», вставьте историю переписки с пользователем<br>и получите готовый ответ, который затащит его в приват.</p>
+    </div>
+
+    <div id="chatSession" class="hidden">
+      <div id="sessionHeader">
+        <input id="chatTitle" title="Название чата (имя пользователя)">
+        <button id="deleteChatBtn" class="btn danger small">🗑 Удалить чат</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>📋 История чата с пользователем</h3>
+          <span class="hint">вставьте переписку как есть — ассистент сам разберётся</span>
+        </div>
+        <textarea id="historyInput" spellcheck="false"
+          placeholder="Пример:&#10;user: hey beautiful, how are you?&#10;model: hii im great honey, u seem fun ^^&#10;user: you look amazing... what are you into?"></textarea>
+        <!-- F-09: предупреждение об обработке PII сторонним сервисом -->
+        <p class="hint">🔒 Приватность: история переписки отправляется во внешний API (DeepSeek) для обработки,
+           хранится локально не дольше 30 дней и удаляется кнопкой «Очистить все чаты».</p>
+        <div class="controls-row">
+          <select id="strategySel" title="Стратегия работы с пользователем">
+            <option value="auto">🧠 Авто — ассистент решает сам</option>
+            <option value="slow">🐢 Мягкий подвод к привату</option>
+            <option value="fast">⚡ Быстрый инвайт (юзер хорни)</option>
+            <option value="donate">💰 Развод на донат / тип</option>
+          </select>
+          <button id="analyzeBtn" class="btn primary">✨ Проанализировать<small>Ctrl+Enter</small></button>
+        </div>
+        <div id="statusLine"></div>
+      </div>
+
+      <div id="resultArea" class="hidden">
+        <div id="analysisCard" class="card hidden">
+          <div class="card-head"><h3>🔎 Портрет пользователя</h3><span id="strategyChip" class="chip slow"></span></div>
+          <pre id="analysisText"></pre>
+        </div>
+        <div class="card answer-card best">
+          <div class="card-head"><h3>🎯 Лучший ответ</h3>
+            <button class="btn small ghost copy-main-btn">📋 Копировать</button></div>
+          <div id="mainAnswer" class="answer-text"></div>
+        </div>
+        <div id="altsWrap" class="alts-grid"></div>
+        <div class="two-col">
+          <div id="forecastCard" class="card hidden">
+            <div class="card-head"><h3>🔮 Прогноз ответов юзера</h3></div>
+            <pre id="forecastText"></pre>
+          </div>
+          <div id="whyCard" class="card hidden">
+            <div class="card-head"><h3>🧩 Логика решения</h3></div>
+            <pre id="whyText"></pre>
+          </div>
+        </div>
+      </div>
+
+      <details id="libraryBox">
+        <summary>📚 Библиотека заготовок — инвайты в приват <span id="libCount" class="chip subtle"></span></summary>
+        <input id="libSearch" placeholder="🔍 Поиск по заготовкам...">
+        <div id="libList"></div>
+      </details>
+    </div>
+  </section>
+</section>
+
+<!-- ===================== МУЗЫКА ===================== -->
+<section id="tab-music" class="tab-page hidden">
+  <p class="page-desc">🎵 Англоязычная музыка для стрима. «🌐 Открыть» — трек запустится в системном браузере, «▶» — встроенный мини-плеер прямо здесь. Ссылки можно заменить — они сохраняются автоматически.</p>
+  <div id="musicGrid"></div>
+</section>
+
+<!-- ===================== ТИП-МЕНЮ ===================== -->
+<section id="tab-tipmenu" class="tab-page hidden">
+  <p class="page-desc">💎 Все заготовки тип-меню по категориям. Кнопка «copy» кладёт пункт в буфер обмена — вставляй прямо в чат площадки.</p>
+  <input id="tmSearch" placeholder="🔍 Поиск по пунктам меню...">
+  <div id="tmCats" class="pill-row"></div>
+  <div id="tmGrid"></div>
+</section>
+
+<!-- ===================== НАСТРОЙКИ ===================== -->
+<section id="tab-settings" class="tab-page hidden">
+  <div class="settings-wrap">
+
+    <div class="card">
+      <div class="card-head"><h3>🔑 DeepSeek API</h3></div>
+      <div class="field-row">
+        <label>API-ключ</label>
+        <div class="key-line">
+          <input type="password" id="apiKeyInput" placeholder="sk-..." spellcheck="false">
+          <button id="toggleKeyBtn" class="btn ghost small" type="button">👁 Показать</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <label>Модель</label>
+        <select id="modelSel">
+          <option value="deepseek-chat">deepseek-chat — быстро, для стрима (рекомендую)</option>
+          <option value="deepseek-reasoner">deepseek-reasoner — умнее, но медленнее</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label>Креативность ответов: <span id="tempVal">1.3</span></label>
+        <input type="range" id="tempRange" min="0" max="2" step="0.1" value="1.3">
+      </div>
+      <div class="row-gap">
+        <button id="testKeyBtn" class="btn ghost">🔌 Проверить ключ</button>
+        <span id="testKeyStatus"></span>
+      </div>
+      <p class="hint">Ключ берётся на platform.deepseek.com → API Keys. Хранится только на этом компьютере (в веб-версии — только на сервере) и больше никогда не показывается: пустое поле при сохранении = «оставить прежний ключ».</p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>👤 Профиль модели — ассистент пишет от её лица</h3></div>
+      <div class="field-grid">
+        <div class="field-row"><label>Имя</label><input id="pfName" placeholder="Например: Sophie"></div>
+        <div class="field-row"><label>Возраст</label><input id="pfAge" placeholder="22"></div>
+        <div class="field-row"><label>Типаж / внешность</label><input id="pfLook" placeholder="блондинка, спортивная, милае лицо"></div>
+      </div>
+      <div class="field-row"><label>Характер / стиль общения</label><textarea id="pfPersona" rows="2" placeholder="игривая, дразнит юзеров, называет их baby"></textarea></div>
+      <div class="field-grid">
+        <div class="field-row"><label>Можно упоминать</label><input id="pfAllowed" placeholder="любимые фетиши, игрушки..."></div>
+        <div class="field-row"><label>Запрещено упоминать</label><input id="pfForbidden" placeholder="анал и т.п."></div>
+      </div>
+    </div>
+
+    <button id="saveSettingsBtn" class="btn primary wide-big">💾 Сохранить настройки</button>
+    <span id="saveStatus"></span>
+  </div>
+</section>
+
+</main>
+
+<!-- Модалка при добавлении чата -->
+<div id="modalOverlay" class="hidden">
+  <div id="modal">
+    <h3>⚠️ Важно!</h3>
+    <p>Для каждого пользователя создавайте отдельные чаты,<br>иначе могут быть проблемы и ассистент будет выдавать некорректные ответы.</p>
+    <div class="modal-btns">
+      <button id="modalBackBtn" class="btn ghost">← Назад</button>
+      <button id="modalOkBtn" class="btn primary">Понятно</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden">Скопировано ✓</div>
+
+<script src="lib/api-web.js"></script>
+<script src="lib/parser.js"></script>
+<script src="prompts.js"></script>
+<script src="assistant.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
+

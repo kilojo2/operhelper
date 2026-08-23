@@ -1,0 +1,55 @@
+{
+  "name": "operator-helper",
+  "version": "1.0.0",
+  "description": "Хелпер онлайн-оператора вебкам студии",
+  "main": "main.js",
+  "author": "Operator Helper",
+  "license": "MIT",
+  "scripts": {
+    "start": "node web/server.js",
+    "app": "electron .",
+    "web": "node web/server.js",
+    "dist": "electron-builder --win"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.studio.operator-helper",
+    "productName": "Operator Helper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "data/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

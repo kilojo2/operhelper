@@ -1,0 +1,12 @@
+# Зависимости и сборка
+node_modules/
+dist/
+
+# Секреты: конфиги с API-ключами не должны попадать в VCS (F-04)
+web/config.json
+helper-config.json
+
+# Прочее
+*.log
+.DS_Store
+Thumbs.db

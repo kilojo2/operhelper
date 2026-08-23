@@ -1,0 +1,314 @@
+/**
+ * Оркестратор приложения: вкладки, настройки, музыка, тип-меню, буфер обмена.
+ */
+(function () {
+  'use strict';
+
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => document.querySelectorAll(s);
+
+  window.AppState = { config: {}, data: { invitesRaw: '', tipMenu: [] } };
+
+  /* ---------- Тост и копирование в буфер ---------- */
+  let toastTimer = null;
+  function showToast(msg) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add('hidden'), 1600);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Скопировано ✓');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast('Скопировано ✓');
+    }
+  }
+  window.copyText = copyText;
+
+  /* ---------- Вкладки ---------- */
+  window.switchTab = function switchTab(name) {
+    $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    $$('.tab-page').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+  };
+
+  function initTabs() {
+    $$('.tab').forEach(btn =>
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+  }
+
+  /* ---------- Поверх всех окон (только десктоп) ---------- */
+  function initOnTop() {
+    const el = $('#onTop');
+    if (!el) return; // в веб-версии элемент скрыт/отсутствует
+    el.addEventListener('change', (e) => {
+      window.api.setOnTop(e.target.checked);
+      showToast(e.target.checked ? '📌 Окно поверх всех' : 'Обычный режим окна');
+    });
+  }
+
+  /* ---------- Настройки ---------- */
+  function fillSettings(cfg) {
+    // F-01: сервер никогда не возвращает сам ключ — поле всегда пустое,
+    // плейсхолдер подсказывает, сохранён ли ключ ранее
+    const keyInput = $('#apiKeyInput');
+    keyInput.value = '';
+    keyInput.placeholder = cfg.hasKey ? '•••• (ключ сохранён)' : 'sk-...';
+    $('#modelSel').value = cfg.model || 'deepseek-chat';
+    const t = typeof cfg.temperature === 'number' ? cfg.temperature : 1.3;
+    $('#tempRange').value = t;
+    $('#tempVal').textContent = t;
+    const p = cfg.profile || {};
+    $('#pfName').value = p.name || '';
+    $('#pfAge').value = p.age || '';
+    $('#pfLook').value = p.look || '';
+    $('#pfPersona').value = p.persona || '';
+    $('#pfAllowed').value = p.allowed || '';
+    $('#pfForbidden').value = p.forbidden || '';
+  }
+
+  function collectSettings() {
+    return {
+      apiKey: $('#apiKeyInput').value.trim(),
+      model: $('#modelSel').value,
+      temperature: parseFloat($('#tempRange').value),
+      profile: {
+        name: $('#pfName').value.trim(),
+        age: $('#pfAge').value.trim(),
+        look: $('#pfLook').value.trim(),
+        persona: $('#pfPersona').value.trim(),
+        allowed: $('#pfAllowed').value.trim(),
+        forbidden: $('#pfForbidden').value.trim()
+      }
+    };
+  }
+
+  function initSettings() {
+    fillSettings(AppState.config);
+
+    $('#tempRange').addEventListener('input',
+      (e) => { $('#tempVal').textContent = e.target.value; });
+
+    $('#toggleKeyBtn').addEventListener('click', () => {
+      const inp = $('#apiKeyInput');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      $('#toggleKeyBtn').textContent = inp.type === 'password' ? '👁 Показать' : '🙈 Скрыть';
+    });
+
+    $('#testKeyBtn').addEventListener('click', async () => {
+      const st = $('#testKeyStatus');
+      const typedKey = $('#apiKeyInput').value.trim();
+      st.className = ''; st.textContent = typedKey ? '⏳ Проверяю...' : '⏳ Проверяю сохранённый ключ...';
+      const res = await window.api.testKey({
+        apiKey: typedKey, // пусто = проверить ключ, хранящийся на сервере / в main-процессе (F-01)
+        model: $('#modelSel').value
+      });
+      if (res.ok) {
+        AppState.config.hasKey = true;
+        $('#apiKeyInput').placeholder = '•••• (ключ сохранён)';
+        st.className = 'ok'; st.textContent = '✅ Ключ работает (' + res.ms + ' мс)';
+      }
+      else { st.className = 'err'; st.textContent = '❌ ' + res.error; }
+    });
+
+    $('#saveSettingsBtn').addEventListener('click', async () => {
+      const typedKey = $('#apiKeyInput').value.trim();
+      AppState.config = Object.assign({}, AppState.config, collectSettings());
+      await window.api.saveConfig(AppState.config);
+      if (typedKey) {
+        // F-01: ключ не хранится в интерфейсе — после сохранения сразу забываем его
+        AppState.config.hasKey = true;
+        $('#apiKeyInput').value = '';
+        $('#apiKeyInput').placeholder = '•••• (ключ сохранён)';
+      }
+      const s = $('#saveStatus');
+      s.textContent = '✅ Настройки сохранены';
+      setTimeout(() => { s.textContent = ''; }, 2500);
+    });
+  }
+
+  /* ---------- Музыка ---------- */
+  const MUSIC_KEY = 'oh_music_v1';
+
+  function loadMusic() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(MUSIC_KEY));
+      if (Array.isArray(arr) && arr.length === 10) return arr;
+    } catch { /* ignore */ }
+    return new Array(10).fill('');
+  }
+  function saveMusic(arr) { localStorage.setItem(MUSIC_KEY, JSON.stringify(arr)); }
+
+  function ytId(url) {
+    const m = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/.exec(url || '');
+    return m ? m[1] : '';
+  }
+
+  function initMusic() {
+    const grid = $('#musicGrid');
+    grid.innerHTML = '';
+    const list = loadMusic();
+
+    list.forEach((url, i) => {
+      const card = document.createElement('div');
+      card.className = 'music-card';
+      card.innerHTML =
+        '<div class="music-top">' +
+        '<div class="music-num">' + (i + 1) + '</div>' +
+        '<input class="m-url" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false"></div>' +
+        '<div class="music-btns">' +
+        '<button class="btn small ghost m-open">🌐 Открыть в браузере</button>' +
+        '<button class="btn small ghost m-play">▶ Мини-плеер</button></div>';
+
+      const input = card.querySelector('.m-url');
+      input.value = url || '';
+      input.addEventListener('change', () => { list[i] = input.value.trim(); saveMusic(list); });
+
+      card.querySelector('.m-open').addEventListener('click', () => {
+        const u = input.value.trim();
+        if (!ytId(u)) { showToast('⚠️ Вставьте корректную ссылку YouTube'); return; }
+        window.api.openExternal(u.startsWith('http') ? u : 'https://' + u);
+      });
+
+      const playBtn = card.querySelector('.m-play');
+      playBtn.addEventListener('click', () => {
+        const exist = card.querySelector('iframe');
+        if (exist) { exist.remove(); playBtn.textContent = '▶ Мини-плеер'; return; }
+        const id = ytId(input.value.trim());
+        if (!id) { showToast('⚠️ Некорректная ссылка YouTube'); return; }
+        const fr = document.createElement('iframe');
+        fr.className = 'music-frame';
+        fr.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&loop=1&playlist=' + id;
+        fr.allow = 'autoplay; encrypted-media';
+        fr.allowFullscreen = true;
+        card.appendChild(fr);
+        playBtn.textContent = '⏹ Стоп';
+      });
+
+      grid.appendChild(card);
+    });
+  }
+
+  /* ---------- Тип-меню ---------- */
+  let tmActive = 'all';
+  let tmQuery = '';
+
+  function initTipMenu() {
+    const cats = AppState.data.tipMenu || [];
+    const pills = $('#tmCats');
+    pills.innerHTML = '';
+
+    const mkPill = (id, label) => {
+      const b = document.createElement('button');
+      b.className = 'pill' + (tmActive === id ? ' active' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        tmActive = id;
+        $$('#tmCats .pill').forEach(p => p.classList.toggle('active', p === b));
+        renderTipMenu();
+      });
+      return b;
+    };
+
+    pills.appendChild(mkPill('all', '✨ Все категории'));
+    cats.forEach(c => pills.appendChild(mkPill(c.id, (c.icon || '') + ' ' + c.name)));
+
+    $('#tmSearch').addEventListener('input', (e) => {
+      tmQuery = e.target.value.toLowerCase().trim();
+      renderTipMenu();
+    });
+    renderTipMenu();
+  }
+
+  function renderTipMenu() {
+    const grid = $('#tmGrid');
+    grid.innerHTML = '';
+    const cats = AppState.data.tipMenu || [];
+    let count = 0;
+
+    for (const c of cats) {
+      if (tmActive !== 'all' && tmActive !== c.id) continue;
+      const all = c.items || [];
+      const textOf = (t) => typeof t === 'string'
+        ? t
+        : ((t.en || '') + ' ' + (t.ru || ''));
+      const items = all.filter(t => !tmQuery || textOf(t).toLowerCase().includes(tmQuery));
+      if (!items.length) continue;
+
+      const h = document.createElement('h3');
+      h.style.gridColumn = '1 / -1';
+      h.style.margin = '10px 0 2px';
+      h.style.fontSize = '14px';
+      h.textContent = (c.icon || '') + ' ' + c.name;
+      grid.appendChild(h);
+
+      for (const t of items) {
+        const div = document.createElement('div');
+        div.className = 'tm-item';
+        const span = document.createElement('span');
+        let copyText;
+        if (typeof t === 'string') {
+          span.textContent = t;
+          copyText = t;
+        } else {
+          const en = document.createElement('div');
+          en.className = 'tm-en';
+          en.textContent = t.en || t.ru || '';
+          const ru = document.createElement('div');
+          ru.className = 'tm-ru';
+          ru.textContent = t.ru || '';
+          span.append(en, ru);
+          copyText = t.en || t.ru || '';
+        }
+        const btn = document.createElement('button');
+        btn.className = 'tm-copy';
+        btn.textContent = 'copy';
+        btn.addEventListener('click', () => window.copyText(copyText));
+        div.append(span, btn);
+        grid.appendChild(div);
+        count++;
+      }
+    }
+    if (!count) grid.innerHTML = '<div class="pane-note">Ничего не найдено</div>';
+  }
+
+  /* ---------- Запуск ---------- */
+  window.addEventListener('DOMContentLoaded', async () => {
+    // 1) Сначала привязываем интерфейс — кнопки работают даже если сервер недоступен
+    try {
+      initTabs();
+      initOnTop();
+      Assistant.init();
+    } catch (e) { console.error('Ошибка инициализации интерфейса:', e); }
+
+    // 2) Затем подтягиваем конфиг и данные — сбой здесь больше не ломает кнопки
+    try { AppState.config = await window.api.loadConfig() || {}; }
+    catch (e) { console.warn('Конфиг недоступен:', e); AppState.config = {}; }
+
+    try { AppState.data = await window.api.getData(); }
+    catch (e) {
+      console.warn('Заготовки недоступны:', e);
+      AppState.data = { invitesRaw: '', tipMenu: [] };
+    }
+
+    // 3) Отрисовка данных
+    try {
+      initSettings();
+      initMusic();
+      initTipMenu();
+      Assistant.initLibrary(AppState.data.invitesRaw || '');
+    } catch (e) { console.error('Ошибка отрисовки данных:', e); }
+  });
+})();
+
+
+
