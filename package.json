@@ -51,5 +51,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
   }
 }

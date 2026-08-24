@@ -22,5 +22,10 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   // Режим «поверх всех окон»
-  setOnTop: (flag) => ipcRenderer.invoke('window:setOnTop', flag)
+  setOnTop: (flag) => ipcRenderer.invoke('window:setOnTop', flag),
+
+  // База опыта (обучение на чатах, Фаза 1)
+  expSave: (payload) => ipcRenderer.invoke('exp:save', payload),
+  expOutcome: (payload) => ipcRenderer.invoke('exp:outcome', payload),
+  expStats: () => ipcRenderer.invoke('exp:stats')
 });

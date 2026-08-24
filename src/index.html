@@ -68,6 +68,18 @@
         <div id="statusLine"></div>
       </div>
 
+      <div id="expRow" class="exp-row">
+        <button id="expSaveBtn" class="btn ghost">💾 Сохранить чат в опыт</button>
+        <div id="expOutcomeBtns" class="hidden">
+          <span class="hint">Чем закончилось?</span>
+          <button class="btn small outcome" data-outcome="won_private">🎉 Приват</button>
+          <button class="btn small outcome" data-outcome="won_tip">💰 Донат</button>
+          <button class="btn small outcome" data-outcome="lost">❌ Слился</button>
+          <button class="btn small outcome" data-outcome="open">⚪ Ведётся</button>
+        </div>
+        <span id="expStatus" class="hint"></span>
+      </div>
+
       <div id="resultArea" class="hidden">
         <div id="analysisCard" class="card hidden">
           <div class="card-head"><h3>🔎 Портрет пользователя</h3><span id="strategyChip" class="chip slow"></span></div>

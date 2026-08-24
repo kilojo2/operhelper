@@ -84,6 +84,11 @@
     },
 
     // В браузере системный режим «поверх всех окон» недоступен
-    setOnTop: () => {}
+    setOnTop: () => {},
+
+    // База опыта (обучение на чатах, Фаза 1)
+    expSave: (payload) => post('/api/exp/save', payload),
+    expOutcome: (payload) => post('/api/exp/outcome', payload),
+    expStats: () => fetch('/api/exp/stats').then((r) => r.json())
   };
 })();

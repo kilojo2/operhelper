@@ -45,6 +45,7 @@
       id: 'c' + Date.now() + Math.floor(Math.random() * 10000),
       title: 'Чат ' + (chats.length + 1),
       history: '', strategy: 'auto', lastResult: '',
+      expId: null, expResult: '',
       createdAt: Date.now(), updatedAt: Date.now()
     };
   }
@@ -78,6 +79,7 @@
     if (c.lastResult) renderResult(c.lastResult);
     else $('#resultArea').classList.add('hidden');
     $('#statusLine').textContent = '';
+    renderExpState(c);
     $('#historyInput').focus();
   }
 
@@ -222,6 +224,66 @@
     if (!list.length) box.innerHTML = '<div class="pane-note">Ничего не найдено</div>';
   }
 
+  /* ---------- База опыта: сохранение чата и отметка исхода ---------- */
+  function renderExpState(c) {
+    const saveBtn = $('#expSaveBtn');
+    const outBtns = $('#expOutcomeBtns');
+    const st = $('#expStatus');
+    if (!c.expId) {
+      saveBtn.classList.remove('hidden');
+      outBtns.classList.add('hidden');
+      st.textContent = '';
+      return;
+    }
+    saveBtn.classList.add('hidden');
+    outBtns.classList.remove('hidden');
+    st.textContent = '💾 В базе опыта, №' + c.expId;
+    document.querySelectorAll('#expOutcomeBtns .outcome').forEach((b) =>
+      b.classList.toggle('active', b.dataset.outcome === c.expResult));
+  }
+
+  async function expSaveCurrent() {
+    const c = getActive();
+    if (!c) return;
+    const hist = ($('#historyInput').value || '').trim();
+    if (hist.length < 5) {
+      $('#expStatus').textContent = '⚠️ Сначала вставьте историю чата';
+      return;
+    }
+    c.history = hist;
+    saveChats();
+    const btn = $('#expSaveBtn');
+    btn.disabled = true;
+    try {
+      const res = await window.api.expSave({ history: hist, strategy: c.strategy, platform: '' });
+      if (!res.ok) throw new Error(res.error || 'Ошибка сохранения');
+      c.expId = res.chatId;
+      saveChats();
+      renderExpState(c);
+      $('#expStatus').textContent =
+        '💾 Сохранено (№' + res.chatId + ', сообщений: ' + res.msgCount + ') — отметь исход:';
+    } catch (e) {
+      $('#expStatus').textContent = '❌ ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function expSetOutcome(result) {
+    const c = getActive();
+    if (!c || !c.expId) return;
+    try {
+      const res = await window.api.expOutcome({ chatId: c.expId, result });
+      if (!res.ok) throw new Error(res.error || 'Ошибка');
+      c.expResult = result;
+      saveChats();
+      renderExpState(c);
+      $('#expStatus').textContent = '✅ Исход сохранён — благодаря этой метке ассистент учится';
+    } catch (e) {
+      $('#expStatus').textContent = '❌ ' + e.message;
+    }
+  }
+
   /* ---------- Инициализация вкладки ---------- */
   function init() {
     loadChats();
@@ -276,6 +338,11 @@
 
     document.querySelector('.copy-main-btn').addEventListener('click', () =>
       window.copyText(document.getElementById('mainAnswer').textContent));
+
+    // База опыта: сохранить чат и отметить исход
+    $('#expSaveBtn').addEventListener('click', expSaveCurrent);
+    document.querySelectorAll('#expOutcomeBtns .outcome').forEach((btn) =>
+      btn.addEventListener('click', () => expSetOutcome(btn.dataset.outcome)));
 
     if (chats.length) openChat(chats[0].id);
   }

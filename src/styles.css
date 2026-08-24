@@ -113,6 +113,15 @@ select option { background: var(--panel2); }
   gap: 18px;
 }
 #libraryBox { margin-top: 6px; } /* библиотека визуально отделена сильнее остальных блоков */
+
+/* ---------- База опыта (сохранение чатов и исходы) ---------- */
+.exp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn.outcome { background: var(--panel2); border: 1px solid var(--border); }
+.btn.outcome:hover { border-color: var(--accent); color: #fff; }
+.btn.outcome.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff; border-color: transparent; font-weight: 600;
+}
 #noChatPlaceholder { margin: auto; text-align: center; color: var(--muted); line-height: 1.7; }
 .big-emoji { font-size: 54px; margin-bottom: 10px; }
 #noChatPlaceholder h2 { color: var(--text); margin-bottom: 8px; }

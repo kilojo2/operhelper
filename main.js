@@ -118,6 +118,29 @@ ipcMain.handle('data:get', () => {
   };
 });
 
+/* ---------------- База опыта (обучение на чатах, Фаза 1) ---------------- */
+const exp = require('./core/db');
+ipcMain.handle('exp:save', (_e, payload) => {
+  try {
+    const p = payload || {};
+    if (!p.history || String(p.history).trim().length < 5)
+      return { ok: false, error: 'История чата пуста' };
+    return { ok: true, ...exp.saveChat({
+      history: String(p.history), strategy: p.strategy, platform: p.platform }) };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('exp:outcome', (_e, payload) => {
+  try {
+    const p = payload || {};
+    return { ok: true, ...exp.markOutcome(
+      Number(p.chatId), String(p.result || 'open'), Number(p.revenue || 0)) };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('exp:stats', () => {
+  try { return { ok: true, stats: exp.getStats() }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
+
 /* ---------------- IPC ---------------- */
 ipcMain.handle('deepseek:chat', async (_e, payload) => {
   try {

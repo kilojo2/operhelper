@@ -46,6 +46,7 @@ const EXTRA_HOSTS = new Set(
 const ROOT = path.resolve(__dirname);                 // web/
 const SRC_DIR = path.resolve(__dirname, '..', 'src'); // общий фронтенд с десктопом
 const DATA_DIR = path.resolve(__dirname, '..', 'data');
+const exp = require('../core/db'); // база опыта (обучение на чатах, Фаза 1)
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const MAX_BODY = 512 * 1024; // 512 КБ на запрос (истории чатов бывают длинные)
@@ -385,6 +386,31 @@ async function handleApi(req, res, pathname) {
     const cats = (Array.isArray(tipMenu) ? tipMenu : []).filter((c) => c && c.id !== 'goals');
     if (goalsCat && Array.isArray(goalsCat.items)) cats.push(goalsCat);
     return json(res, 200, { invitesRaw, tipMenu: cats });
+  }
+  if (req.method === 'POST' && pathname === '/api/exp/save') {
+    const body = await readJson(req);
+    if (!body.history || String(body.history).trim().length < 5)
+      throw new ApiError(400, 'history: вставьте историю чата (минимум 5 символов)');
+    const saved = exp.saveChat({
+      history: String(body.history),
+      strategy: strField(body.strategy, 20) || '',
+      platform: strField(body.platform, 40) || ''
+    });
+    log(`опыт: сохранён чат #${saved.chatId} (${saved.msgCount} сообщ.)`);
+    return json(res, 200, { ok: true, chatId: saved.chatId, msgCount: saved.msgCount });
+  }
+  if (req.method === 'POST' && pathname === '/api/exp/outcome') {
+    const body = await readJson(req);
+    const allowed = ['won_private', 'won_tip', 'lost', 'open'];
+    if (!allowed.includes(body.result))
+      throw new ApiError(400, 'result: недопустимое значение');
+    const chatId = Number(body.chatId);
+    if (!Number.isFinite(chatId) || chatId <= 0)
+      throw new ApiError(400, 'chatId: некорректный');
+    return json(res, 200, exp.markOutcome(chatId, body.result, Number(body.revenue || 0)));
+  }
+  if (req.method === 'GET' && pathname === '/api/exp/stats') {
+    return json(res, 200, { ok: true, stats: exp.getStats() });
   }
   return json(res, 404, { error: 'Неизвестный API-маршрут' });
 }
