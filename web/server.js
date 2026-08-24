@@ -357,11 +357,16 @@ async function handleApi(req, res, pathname) {
           ['system', 'user', 'assistant'].indexOf(m.role) === -1)
         throw new ApiError(400, 'messages: некорректное сообщение');
     }
-    const content = await callDeepSeek({
-      apiKey: resolveApiKey(), // F-01/F-02: только серверный ключ (config или env), body.apiKey игнорируется
-      model: body.model, temperature: body.temperature, messages: msgs
-    });
-    return json(res, 200, { ok: true, content });
+    try {
+      const content = await callDeepSeek({
+        apiKey: resolveApiKey(), // F-01/F-02: только серверный ключ (config или env), body.apiKey игнорируется
+        model: body.model, temperature: body.temperature, messages: msgs
+      });
+      return json(res, 200, { ok: true, content });
+    } catch (e) {
+      // Ошибки DeepSeek/сети отдаём клиенту управляемо ({ok:false,error}), а не 500-й
+      return json(res, 200, { ok: false, error: e.message });
+    }
   }
   if (req.method === 'GET' && pathname === '/api/data') {
     let tipMenu = [];
