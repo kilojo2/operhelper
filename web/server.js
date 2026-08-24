@@ -153,7 +153,7 @@ function readBody(req) {
 async function readJson(req) {
   const ct = String(req.headers['content-type'] || '').toLowerCase().split(';')[0].trim();
   if (ct !== 'application/json') throw new ApiError(415, 'Ожидается Content-Type: application/json');
-  const raw = await readBody(req);
+  const raw = (await readBody(req)).replace(/^\uFEFF/, ''); // tolerate UTF-8 BOM
   if (!raw) return {};
   try { return JSON.parse(raw); }
   catch { throw new ApiError(400, 'Некорректный JSON в теле запроса'); }
