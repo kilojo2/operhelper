@@ -137,7 +137,7 @@ ipcMain.handle('exp:outcome', (_e, payload) => {
   } catch (err) { return { ok: false, error: err.message }; }
 });
 ipcMain.handle('exp:stats', () => {
-  try { return { ok: true, stats: exp.getStats() }; }
+  try { return { ok: true, stats: exp.getAnalytics() }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
 ipcMain.handle('exp:examples', (_e, payload) => {

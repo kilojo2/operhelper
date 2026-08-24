@@ -118,6 +118,13 @@ function initSqlite() {
       const getMsgs = db.prepare('SELECT role, text FROM messages WHERE chat_id = ? ORDER BY id');
       return chats.map((c) => ({ ...c, messages: getMsgs.all(c.id) }));
     },
+    getAllChats() {
+      return db.prepare(
+        'SELECT id, status, strategy, msg_count, created_at FROM chats ORDER BY id').all();
+    },
+    getRevenueTotal() {
+      return db.prepare('SELECT COALESCE(SUM(revenue), 0) AS s FROM outcomes').get().s;
+    },
     getStats() {
       const total = db.prepare('SELECT COUNT(*) AS n FROM chats').get().n;
       const byStatus = {};
@@ -197,6 +204,15 @@ function initJson() {
           id: c.id, strategy: c.strategy, updated_at: c.updated_at,
           messages: state.messages.filter((m) => m.chat_id === c.id)
         }));
+    },
+    getAllChats() {
+      return state.chats.map((c) => ({
+        id: c.id, status: c.status, strategy: c.strategy,
+        msg_count: c.msg_count, created_at: c.created_at
+      }));
+    },
+    getRevenueTotal() {
+      return state.outcomes.reduce((s, o) => s + (Number(o.revenue) || 0), 0);
     },
     getStats() {
       const byStatus = {};
@@ -316,6 +332,49 @@ function getExperienceContextImpl(implObj, { history, strategy }) {
   return blocks;
 }
 
+/* ---------------- Аналитика для вкладки «Опыт» (Фаза 3) ---------------- */
+function getAnalyticsImpl(implObj) {
+  const stats = implObj.getStats();
+  const chats = implObj.getAllChats();
+  const wonChats = implObj.getSuccessfulMessages(300);
+
+  /* Топ-темы: ключевые слова, встречавшиеся в УСПЕШНЫХ диалогах */
+  const freq = {};
+  for (const ch of wonChats) {
+    const seen = new Set(extractKeywords(ch.messages.map((m) => m.text).join(' ')));
+    for (const w of seen) freq[w] = (freq[w] || 0) + 1;
+  }
+  const topTopics = Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([topic, count]) => ({ topic, count }));
+
+  /* Динамика: последние 6 недель (total / won) */
+  const weeks = [];
+  const now = Date.now();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now - i * 7 * 864e5);
+    weeks.push({ label: d.toISOString().slice(0, 10), total: 0, won: 0 });
+  }
+  for (const c of chats) {
+    const t = Date.parse(c.created_at);
+    if (!t) continue;
+    const idx = 5 - Math.floor((now - t) / (7 * 864e5));
+    if (idx >= 0 && idx < 6) {
+      weeks[idx].total++;
+      if (c.status === 'won_private' || c.status === 'won_tip') weeks[idx].won++;
+    }
+  }
+
+  const avgMsgs = chats.length
+    ? Math.round(chats.reduce((s, c) => s + (c.msg_count || 0), 0) / chats.length * 10) / 10
+    : 0;
+
+  return Object.assign({}, stats, {
+    topTopics, weeks, avgMsgs, revenue: implObj.getRevenueTotal()
+  });
+}
+
 /* ---------------- Инициализация и публичный API ---------------- */
 let impl = null;
 function init() {
@@ -338,6 +397,7 @@ module.exports = {
   saveChat: (p) => init().saveChat(p || {}),
   markOutcome: (chatId, result, revenue) => init().markOutcome(chatId, result, revenue),
   getStats: () => init().getStats(),
+  getAnalytics: () => getAnalyticsImpl(init()),
   getExperienceContext: (p) => getExperienceContextImpl(init(), p || {})
 };
 

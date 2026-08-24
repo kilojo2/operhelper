@@ -419,7 +419,7 @@ async function handleApi(req, res, pathname) {
       examplesBlock: ctx.examplesBlock, statsBlock: ctx.statsBlock, antiBlock: ctx.antiBlock });
   }
   if (req.method === 'GET' && pathname === '/api/exp/stats') {
-    return json(res, 200, { ok: true, stats: exp.getStats() });
+    return json(res, 200, { ok: true, stats: exp.getAnalytics() });
   }
   return json(res, 404, { error: 'Неизвестный API-маршрут' });
 }

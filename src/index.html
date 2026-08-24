@@ -15,6 +15,7 @@
     <button class="tab active" data-tab="assistant">🤖 Ассистент</button>
     <button class="tab" data-tab="music">🎵 Музыка</button>
     <button class="tab" data-tab="tipmenu">💎 Тип-меню</button>
+    <button class="tab" data-tab="experience">📈 Опыт</button>
     <button class="tab" data-tab="settings">⚙️ Настройки</button>
   </nav>
   <label class="ontop" title="Держать окно поверх стрима и браузера">
@@ -124,6 +125,27 @@
   <input id="tmSearch" placeholder="🔍 Поиск по пунктам меню...">
   <div id="tmCats" class="pill-row"></div>
   <div id="tmGrid"></div>
+</section>
+
+<!-- ===================== ОПЫТ (аналитика) ===================== -->
+<section id="tab-experience" class="tab-page hidden">
+  <p class="page-desc">📈 Обучение в цифрах: чем больше чатов ты сохраняешь и размечаешь исходами, тем точнее работает ассистент. Статистика обновляется при каждом открытии вкладки.</p>
+  <div id="expKpis" class="kpi-grid"></div>
+
+  <div class="card">
+    <div class="card-head"><h3>🎯 Конверсия по стратегиям</h3></div>
+    <div id="expStrategyTable"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>🔥 Топ-темы успешных диалогов</h3></div>
+    <div id="expTopics" class="chip-row"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>📅 Динамика по неделям <span class="hint">— тёмный столбик: всего диалогов, градиентный: победы</span></h3></div>
+    <div id="expWeeks" class="weeks-row"></div>
+  </div>
 </section>
 
 <!-- ===================== НАСТРОЙКИ ===================== -->

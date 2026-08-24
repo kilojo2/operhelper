@@ -122,6 +122,35 @@ select option { background: var(--panel2); }
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   color: #fff; border-color: transparent; font-weight: 600;
 }
+
+/* ---------- Вкладка «Опыт» (аналитика) ---------- */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; text-align: center; }
+.kpi-v {
+  font-size: 26px; font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.kpi-l { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+#tab-experience .card { margin-bottom: 14px; }
+.str-row {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px;
+  padding: 8px 10px; border-radius: 10px; font-size: 13.5px; align-items: center;
+}
+.str-row:nth-child(even) { background: var(--panel2); }
+.str-head { color: var(--muted); font-size: 12px; font-weight: 600; }
+.str-row .good { color: var(--ok); font-weight: 700; }
+.str-row .mid { color: var(--warn); font-weight: 700; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.topic-chip { background: var(--panel2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 13px; }
+.topic-chip b { color: var(--accent); }
+.weeks-row { display: flex; gap: 10px; align-items: flex-end; justify-content: space-around; min-height: 160px; padding-top: 10px; }
+.week-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.week-bars { display: flex; align-items: flex-end; gap: 4px; height: 110px; }
+.bar-total { width: 16px; background: #3a3560; border-radius: 6px 6px 0 0; }
+.bar-won { width: 16px; background: linear-gradient(180deg, var(--accent), var(--accent2)); border-radius: 6px 6px 0 0; }
+.week-l { font-size: 12px; }
+.week-d { font-size: 10.5px; color: var(--muted); }
 #noChatPlaceholder { margin: auto; text-align: center; color: var(--muted); line-height: 1.7; }
 .big-emoji { font-size: 54px; margin-bottom: 10px; }
 #noChatPlaceholder h2 { color: var(--text); margin-bottom: 8px; }

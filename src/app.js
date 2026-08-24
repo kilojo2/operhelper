@@ -35,10 +35,17 @@
   }
   window.copyText = copyText;
 
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s == null ? '' : s);
+    return d.innerHTML;
+  }
+
   /* ---------- Вкладки ---------- */
   window.switchTab = function switchTab(name) {
     $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     $$('.tab-page').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+    if (name === 'experience' && window.ExperienceTab) ExperienceTab.load();
   };
 
   function initTabs() {
@@ -55,6 +62,66 @@
       showToast(e.target.checked ? '📌 Окно поверх всех' : 'Обычный режим окна');
     });
   }
+
+  /* ---------- Вкладка «Опыт» (аналитика) ---------- */
+  const ExperienceTab = {
+    async load() {
+      const box = $('#expKpis');
+      try {
+        const res = await window.api.expStats();
+        if (!res.ok) throw new Error(res.error || 'Ошибка загрузки');
+        ExperienceTab.render(res.stats || {});
+      } catch (e) {
+        box.innerHTML = '<div class="pane-note">❌ ' + escHtml(e.message) + '</div>';
+      }
+    },
+
+    render(s) {
+      const won = (s.byStatus && ((s.byStatus.won_private || 0) + (s.byStatus.won_tip || 0))) || 0;
+      const kpis = [
+        ['Всего диалогов', s.total || 0],
+        ['Конверсия', (s.conversion || 0) + '%'],
+        ['Победы', won],
+        ['Ср. длина диалога', s.avgMsgs || 0],
+        ['Доход (оценка)', s.revenue || 0]
+      ];
+      $('#expKpis').innerHTML = kpis.map(([l, v]) =>
+        `<div class="kpi"><div class="kpi-v">${escHtml(v)}</div><div class="kpi-l">${escHtml(l)}</div></div>`).join('');
+
+      const rows = s.byStrategy || [];
+      const st = $('#expStrategyTable');
+      if (!s.total) {
+        st.innerHTML = '<div class="pane-note">Пока нет данных — сохраняй чаты в опыт и отмечай исходы</div>';
+      } else {
+        st.innerHTML =
+          '<div class="str-row str-head"><span>Стратегия</span><span>Диалогов</span><span>Побед</span><span>Конверсия</span></div>' +
+          rows.map((r) => {
+            const conv = r.total ? Math.round(r.won / r.total * 100) : 0;
+            return `<div class="str-row"><span>${escHtml(r.strategy)}</span><span>${r.total}</span><span>${r.won}</span><span class="${conv >= 50 ? 'good' : 'mid'}">${conv}%</span></div>`;
+          }).join('');
+      }
+
+      const topics = s.topTopics || [];
+      $('#expTopics').innerHTML = (s.total && topics.length)
+        ? topics.map((t) => `<span class="topic-chip">${escHtml(t.topic)} <b>×${t.count}</b></span>`).join('')
+        : '<span class="hint">Появятся после сохранения успешных чатов</span>';
+
+      const weeks = s.weeks || [];
+      const maxT = Math.max(1, ...weeks.map((w) => w.total));
+      $('#expWeeks').innerHTML = s.total
+        ? weeks.map((w) => {
+            const hT = Math.round(w.total / maxT * 100);
+            const hW = w.total ? Math.round(w.won / maxT * 100) : 0;
+            return `<div class="week-col"><div class="week-bars">` +
+              `<div class="bar-total" style="height:${hT}%"></div>` +
+              `<div class="bar-won" style="height:${hW}%"></div></div>` +
+              `<div class="week-l">${w.total} / ${w.won}</div>` +
+              `<div class="week-d">${escHtml(String(w.label || '').slice(5))}</div></div>`;
+          }).join('')
+        : '';
+    }
+  };
+  window.ExperienceTab = ExperienceTab;
 
   /* ---------- Настройки ---------- */
   function fillSettings(cfg) {
