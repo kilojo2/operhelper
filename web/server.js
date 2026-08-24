@@ -30,11 +30,18 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
    Локально без PORT продолжаем держать сервер только на этом ПК. */
 const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 /* Дополнительные доменные имена, под которыми сайт доступен извне
-   (например, домен Railway). Через запятую:
+   (например, домен Railway). Через запятую. Формат tolerant: можно с
+   протоколом и слэшем — «https://abc.up.railway.app/» тоже сработает:
    ALLOWED_HOSTS=my-app.up.railway.app */
 const EXTRA_HOSTS = new Set(
   String(process.env.ALLOWED_HOSTS || '')
-    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    .split(',')
+    .map((s) => s.trim().toLowerCase()
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//, '') // убрать протокол (https://)
+      .replace(/\/.*$/, '')                   // убрать путь и слэш на конце
+      .replace(/:\d+$/, '')                   // убрать порт
+      .replace(/\.$/, ''))                    // убрать точку на конце
+    .filter(Boolean)
 );
 const ROOT = path.resolve(__dirname);                 // web/
 const SRC_DIR = path.resolve(__dirname, '..', 'src'); // общий фронтенд с десктопом
