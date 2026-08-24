@@ -393,11 +393,17 @@ async function handleApi(req, res, pathname) {
     const body = await readJson(req);
     if (!body.history || String(body.history).trim().length < 5)
       throw new ApiError(400, 'history: вставьте историю чата (минимум 5 символов)');
-    const saved = exp.saveChat({
-      history: String(body.history),
-      strategy: strField(body.strategy, 20) || '',
-      platform: strField(body.platform, 40) || ''
-    });
+    let saved;
+    try {
+      saved = exp.saveChat({
+        history: String(body.history),
+        strategy: strField(body.strategy, 20) || '',
+        platform: strField(body.platform, 40) || ''
+      });
+    } catch (e) {
+      log('опыт: ошибка сохранения — ' + e.message);
+      return json(res, 200, { ok: false, error: 'База опыта недоступна: ' + e.message });
+    }
     log(`опыт: сохранён чат #${saved.chatId} (${saved.msgCount} сообщ.)`);
     return json(res, 200, { ok: true, chatId: saved.chatId, msgCount: saved.msgCount });
   }
@@ -409,19 +415,37 @@ async function handleApi(req, res, pathname) {
     const chatId = Number(body.chatId);
     if (!Number.isFinite(chatId) || chatId <= 0)
       throw new ApiError(400, 'chatId: некорректный');
-    return json(res, 200, exp.markOutcome(chatId, body.result, Number(body.revenue || 0)));
+    let result;
+    try {
+      result = exp.markOutcome(chatId, body.result, Number(body.revenue || 0));
+    } catch (e) {
+      return json(res, 200, { ok: false, error: 'База опыта недоступна: ' + e.message });
+    }
+    return json(res, 200, result);
   }
   if (req.method === 'POST' && pathname === '/api/exp/examples') {
     const body = await readJson(req);
-    const ctx = exp.getExperienceContext({
-      history: String(body.history || ''),
-      strategy: strField(body.strategy, 20) || ''
-    });
+    let ctx;
+    try {
+      ctx = exp.getExperienceContext({
+        history: String(body.history || ''),
+        strategy: strField(body.strategy, 20) || ''
+      });
+    } catch (e) {
+      return json(res, 200, { ok: false, count: 0, examplesBlock: '',
+        statsBlock: '', antiBlock: '', error: 'База опыта недоступна: ' + e.message });
+    }
     return json(res, 200, { ok: true, count: ctx.count,
       examplesBlock: ctx.examplesBlock, statsBlock: ctx.statsBlock, antiBlock: ctx.antiBlock });
   }
   if (req.method === 'GET' && pathname === '/api/exp/stats') {
-    return json(res, 200, { ok: true, stats: exp.getAnalytics() });
+    let stats;
+    try {
+      stats = exp.getAnalytics();
+    } catch (e) {
+      return json(res, 200, { ok: false, error: 'База опыта недоступна: ' + e.message });
+    }
+    return json(res, 200, { ok: true, stats });
   }
   return json(res, 404, { error: 'Неизвестный API-маршрут' });
 }

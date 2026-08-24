@@ -145,8 +145,8 @@ function initSqlite() {
 }
 
 /* ---------------- Движок JSON (fallback, тот же интерфейс) ---------------- */
-function initJson() {
-  const JSON_PATH = DB_PATH + '.json';
+function initJson(jsonPath) {
+  const JSON_PATH = jsonPath || (DB_PATH + '.json');
   fs.mkdirSync(path.dirname(JSON_PATH), { recursive: true });
   const state = { seq: 0, chats: [], messages: [], outcomes: [] };
   try { Object.assign(state, JSON.parse(fs.readFileSync(JSON_PATH, 'utf-8'))); }
@@ -155,6 +155,7 @@ function initJson() {
 
   return {
     name: 'json',
+    file: JSON_PATH,
     saveChat({ history, strategy, platform }) {
       const msgs = parseHistory(history);
       const id = ++state.seq;
@@ -385,8 +386,19 @@ function init() {
       console.warn('[db] better-sqlite3 недоступен, включаю JSON-хранилище:', e.message);
     }
   }
-  if (!impl) impl = initJson();
-  console.log(`[db] опыт: движок=${impl.name}, файл=${DB_PATH}${impl.name === 'json' ? '.json' : ''}`);
+  if (!impl) {
+    try { impl = initJson(); }
+    catch (e) {
+      /* Путь недоступен (напр., EXPERIENCE_DB_PATH=/data без примонтированного
+         тома на Railway) — последнее средство: временный файл ОС,
+         чтобы сохранение чатов никогда не падало. */
+      const tmpPath = path.join(os.tmpdir(), 'operator-helper-experience.json');
+      console.warn('[db] путь недоступен (' + e.message + '), использую временный:', tmpPath);
+      impl = initJson(tmpPath);
+    }
+  }
+  console.log(`[db] опыт: движок=${impl.name}, файл=${
+    impl.name === 'json' ? (impl.file || DB_PATH + '.json') : DB_PATH}`);
   return impl;
 }
 
