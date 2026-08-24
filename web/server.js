@@ -383,9 +383,11 @@ async function handleApi(req, res, pathname) {
     try { invitesRaw = fs.readFileSync(path.join(DATA_DIR, 'Зазывы в приват.txt'), 'utf-8'); } catch { /* пусто */ }
     let goalsCat = null;
     try { goalsCat = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'goals.json'), 'utf-8')); } catch { /* пусто */ }
+    let goalBank = {};
+    try { goalBank = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'goal-bank.json'), 'utf-8')); } catch { /* пусто */ }
     const cats = (Array.isArray(tipMenu) ? tipMenu : []).filter((c) => c && c.id !== 'goals');
     if (goalsCat && Array.isArray(goalsCat.items)) cats.push(goalsCat);
-    return json(res, 200, { invitesRaw, tipMenu: cats });
+    return json(res, 200, { invitesRaw, tipMenu: cats, goalBank });
   }
   if (req.method === 'POST' && pathname === '/api/exp/save') {
     const body = await readJson(req);

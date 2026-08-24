@@ -15,6 +15,7 @@
     <button class="tab active" data-tab="assistant">🤖 Ассистент</button>
     <button class="tab" data-tab="music">🎵 Музыка</button>
     <button class="tab" data-tab="tipmenu">💎 Тип-меню</button>
+    <button class="tab" data-tab="goalsgen">🎲 Генератор</button>
     <button class="tab" data-tab="experience">📈 Опыт</button>
     <button class="tab" data-tab="settings">⚙️ Настройки</button>
   </nav>
@@ -125,6 +126,23 @@
   <input id="tmSearch" placeholder="🔍 Поиск по пунктам меню...">
   <div id="tmCats" class="pill-row"></div>
   <div id="tmGrid"></div>
+</section>
+
+<!-- ===================== ГЕНЕРАТОР ЦЕЛЕЙ ===================== -->
+<section id="tab-goalsgen" class="tab-page hidden">
+  <p class="page-desc">🎲 Выбери хештег — получишь готовые цели по теме. Мало? «✨ Сгенерировать ещё (AI)» придумает свежие в том же стиле. Отмечай ⭐ — соберётся личный сет на стрим.</p>
+  <div id="ggTags" class="pill-row"></div>
+  <div class="row-gap" style="margin-bottom: 12px">
+    <button id="ggGenerateBtn" class="btn primary">✨ Сгенерировать ещё (AI)</button>
+    <button id="ggCopyAllBtn" class="btn ghost">📋 Копировать все мои цели</button>
+    <span id="ggStatus" class="hint"></span>
+  </div>
+  <h3 id="ggTitle" style="margin-bottom: 10px">Выбери хештег выше ↑</h3>
+  <div id="ggGrid" class="tm-grid"></div>
+  <div class="card" style="margin-top: 14px">
+    <div class="card-head"><h3>⭐ Мои цели на стрим <span id="myGoalsCount" class="chip subtle"></span></h3></div>
+    <div id="myGoalsList"></div>
+  </div>
 </section>
 
 <!-- ===================== ОПЫТ (аналитика) ===================== -->

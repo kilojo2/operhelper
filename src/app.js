@@ -348,6 +348,145 @@
     if (!count) grid.innerHTML = '<div class="pane-note">Ничего не найдено</div>';
   }
 
+  /* ---------- Генератор целей (хештеги) ---------- */
+  const GG_TAGS = [
+    { tag: 'feet', label: '#feet 🦶' },
+    { tag: 'ass', label: '#ass 🍑' },
+    { tag: 'tits', label: '#tits 🍒' },
+    { tag: 'face', label: '#face 😍' },
+    { tag: 'lips', label: '#lips 👄' },
+    { tag: 'finger', label: '#finger 🖖' },
+    { tag: 'pussy', label: '#pussy 🍓' }
+  ];
+  const MY_GOALS_KEY = 'oh_my_goals_v1';
+  let ggTag = null;
+  let ggItems = [];
+
+  function loadMyGoals() {
+    try { return JSON.parse(localStorage.getItem(MY_GOALS_KEY)) || []; }
+    catch { return []; }
+  }
+  function saveMyGoals(list) {
+    localStorage.setItem(MY_GOALS_KEY, JSON.stringify(list));
+  }
+
+  function initGoalsGen() {
+    const pills = $('#ggTags');
+    pills.innerHTML = GG_TAGS.map((t) =>
+      `<button class="pill" data-tag="${t.tag}">${t.label}</button>`).join('');
+    pills.querySelectorAll('.pill').forEach((b) =>
+      b.addEventListener('click', () => {
+        ggTag = b.dataset.tag;
+        pills.querySelectorAll('.pill').forEach((p) => p.classList.toggle('active', p === b));
+        $('#ggStatus').textContent = '';
+        renderGoalsGen();
+      }));
+    $('#ggGenerateBtn').addEventListener('click', generateAiGoals);
+    $('#ggCopyAllBtn').addEventListener('click', copyAllMyGoals);
+    renderMyGoals();
+  }
+
+  function renderGoalsGen() {
+    const bank = (window.AppState.data && AppState.data.goalBank) || {};
+    const cat = bank[ggTag] || { items: [] };
+    ggItems = (cat.items || []).map((i) => ({ en: i.en, ru: i.ru, ai: false }));
+    $('#ggTitle').textContent = (cat.label || '#' + ggTag) +
+      ' — ' + ggItems.length + ' готовых целей';
+    renderGgGrid();
+  }
+
+  function renderGgGrid() {
+    const grid = $('#ggGrid');
+    grid.innerHTML = ggItems.map((it, idx) =>
+      `<div class="gg-item${it.ai ? ' gg-ai' : ''}">` +
+      `<div class="gg-en">${escHtml(it.en)}${it.ai ? ' <span class="chip fast">✨ AI</span>' : ''}</div>` +
+      `<div class="gg-ru">${escHtml(it.ru)}</div>` +
+      `<div class="gg-btns">` +
+      `<button class="tm-copy" data-act="copy" data-idx="${idx}">📋 copy</button>` +
+      `<button class="tm-copy" data-act="save" data-idx="${idx}">⭐ в мои</button>` +
+      `</div></div>`).join('');
+    grid.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        const it = ggItems[Number(b.dataset.idx)];
+        if (!it) return;
+        if (b.dataset.act === 'copy') window.copyText(it.en);
+        else addToMyGoals(it);
+      }));
+  }
+
+  async function generateAiGoals() {
+    if (!ggTag) { $('#ggStatus').textContent = '⚠️ Сначала выбери хештег'; return; }
+    const btn = $('#ggGenerateBtn');
+    btn.disabled = true;
+    $('#ggStatus').textContent = '⏳ DeepSeek придумывает свежие цели...';
+    try {
+      const cfg = (window.AppState && AppState.config) || {};
+      const res = await window.api.chat({
+        model: cfg.model || 'deepseek-chat',
+        temperature: 1.4,
+        messages: [
+          { role: 'system', content: 'Ты — генератор целей (tip-menu goals) для вебкам-модели. Отвечай СТРОГО JSON-массивом без пояснений и без markdown: [{"en":"...","ru":"..."}]. en — короткая фраза-действие от лица модели на английском с 1-2 эмодзи; ru — перевод на русский. Стиль фраз: "Show my soles 🦶👀".' },
+          { role: 'user', content: `Категория #${ggTag}: сгенерируй 10 разных целей.` }
+        ]
+      });
+      if (!res.ok) throw new Error(res.error || 'Ошибка генерации');
+      const m = res.content.match(/\[[\s\S]*\]/);
+      const parsed = JSON.parse(m ? m[0] : res.content);
+      const fresh = (Array.isArray(parsed) ? parsed : [])
+        .filter((i) => i && typeof i.en === 'string' && i.en.trim())
+        .slice(0, 10)
+        .map((i) => ({ en: String(i.en).trim(), ru: String(i.ru || '').trim(), ai: true }));
+      if (!fresh.length) throw new Error('Модель вернула пустой список, попробуй ещё раз');
+      ggItems = ggItems.concat(fresh);
+      renderGgGrid();
+      $('#ggStatus').textContent = `✨ AI добавил целей: ${fresh.length}`;
+    } catch (e) {
+      $('#ggStatus').textContent = '❌ ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function addToMyGoals(it) {
+    const list = loadMyGoals();
+    if (list.some((g) => g.en === it.en)) {
+      $('#ggStatus').textContent = '⭐ Эта цель уже в моих';
+      return;
+    }
+    list.push({ tag: ggTag || '', en: it.en, ru: it.ru });
+    saveMyGoals(list);
+    renderMyGoals();
+    $('#ggStatus').textContent = '⭐ Добавлено в мои цели (' + list.length + ')';
+  }
+
+  function renderMyGoals() {
+    const list = loadMyGoals();
+    const box = $('#myGoalsList');
+    box.innerHTML = list.length
+      ? list.map((g, i) =>
+          `<div class="lib-row"><div class="lib-en">${escHtml(g.en)}</div>` +
+          `<div class="lib-ru">${escHtml(g.ru)}</div>` +
+          `<button class="btn small ghost" data-i="${i}" data-act="copy">📋</button>` +
+          `<button class="btn small ghost" data-i="${i}" data-act="del">✖</button></div>`).join('')
+      : '<div class="pane-note">Отмечай ⭐ у целей — они соберутся сюда для стрима</div>';
+    box.querySelectorAll('button').forEach((b) =>
+      b.addEventListener('click', () => {
+        const list2 = loadMyGoals();
+        const g = list2[Number(b.dataset.i)];
+        if (!g) return;
+        if (b.dataset.act === 'copy') window.copyText(g.en);
+        else { list2.splice(Number(b.dataset.i), 1); saveMyGoals(list2); renderMyGoals(); }
+      }));
+    const cnt = $('#myGoalsCount');
+    if (cnt) cnt.textContent = list.length ? list.length + ' шт.' : '';
+  }
+
+  function copyAllMyGoals() {
+    const list = loadMyGoals();
+    if (!list.length) { $('#ggStatus').textContent = '⚠️ Список пуст'; return; }
+    window.copyText(list.map((g, i) => (i + 1) + '. ' + g.en).join('\n'));
+  }
+
   /* ---------- Запуск ---------- */
   window.addEventListener('DOMContentLoaded', async () => {
     // 1) Сначала привязываем интерфейс — кнопки работают даже если сервер недоступен
@@ -372,6 +511,7 @@
       initSettings();
       initMusic();
       initTipMenu();
+      initGoalsGen();
       Assistant.initLibrary(AppState.data.invitesRaw || '');
     } catch (e) { console.error('Ошибка отрисовки данных:', e); }
   });

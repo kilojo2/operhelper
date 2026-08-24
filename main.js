@@ -110,11 +110,14 @@ ipcMain.handle('data:get', () => {
   try { tipMenu = JSON.parse(readDataFile('tipmenu.json')); } catch { /* пусто */ }
   let goalsCat = null;
   try { goalsCat = JSON.parse(readDataFile('goals.json')); } catch { /* пусто */ }
+  let goalBank = {};
+  try { goalBank = JSON.parse(readDataFile('goal-bank.json')); } catch { /* пусто */ }
   const cats = (Array.isArray(tipMenu) ? tipMenu : []).filter((c) => c && c.id !== 'goals');
   if (goalsCat && Array.isArray(goalsCat.items)) cats.push(goalsCat);
   return {
     invitesRaw: readDataFile('Зазывы в приват.txt'),
-    tipMenu: cats
+    tipMenu: cats,
+    goalBank
   };
 });
 
