@@ -174,12 +174,24 @@
     btn.disabled = true;
     setStatus('⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
 
+    // Фаза 2: подтягиваем похожие успешные диалоги и статистику из базы опыта
+    let expBlock = '';
+    let expCount = 0;
+    try {
+      const ctx = await window.api.expExamples({ history: hist, strategy: c.strategy });
+      if (ctx && ctx.ok) {
+        expCount = ctx.count || 0;
+        expBlock = [ctx.examplesBlock, ctx.statsBlock, ctx.antiBlock]
+          .filter(Boolean).join('\n\n');
+      }
+    } catch { /* база опыта недоступна — анализ всё равно выполняется */ }
+
     try {
       const res = await window.api.chat({
         model: cfg.model || 'deepseek-chat',
         temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 1.3,
         messages: [
-          { role: 'system', content: Prompts.buildSystemPrompt(cfg.profile, invitesRawText) },
+          { role: 'system', content: Prompts.buildSystemPrompt(cfg.profile, invitesRawText, expBlock) },
           { role: 'user', content: Prompts.buildUserPrompt(hist, c.strategy) }
         ]
       });
@@ -187,7 +199,8 @@
       c.lastResult = res.content;
       saveChats();
       renderResult(res.content);
-      setStatus('✅ Готово! Скопируйте «Лучший ответ» и отправьте юзеру.');
+      setStatus('✅ Готово! Скопируйте «Лучший ответ» и отправьте юзеру.' +
+        (expCount ? ` (опыт: подмешано примеров — ${expCount})` : ''));
     } catch (e) {
       setStatus('❌ ' + e.message, true);
     } finally {

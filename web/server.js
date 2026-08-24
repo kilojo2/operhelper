@@ -409,6 +409,15 @@ async function handleApi(req, res, pathname) {
       throw new ApiError(400, 'chatId: некорректный');
     return json(res, 200, exp.markOutcome(chatId, body.result, Number(body.revenue || 0)));
   }
+  if (req.method === 'POST' && pathname === '/api/exp/examples') {
+    const body = await readJson(req);
+    const ctx = exp.getExperienceContext({
+      history: String(body.history || ''),
+      strategy: strField(body.strategy, 20) || ''
+    });
+    return json(res, 200, { ok: true, count: ctx.count,
+      examplesBlock: ctx.examplesBlock, statsBlock: ctx.statsBlock, antiBlock: ctx.antiBlock });
+  }
   if (req.method === 'GET' && pathname === '/api/exp/stats') {
     return json(res, 200, { ok: true, stats: exp.getStats() });
   }

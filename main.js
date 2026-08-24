@@ -140,6 +140,16 @@ ipcMain.handle('exp:stats', () => {
   try { return { ok: true, stats: exp.getStats() }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
+ipcMain.handle('exp:examples', (_e, payload) => {
+  try {
+    const p = payload || {};
+    return { ok: true, ...exp.getExperienceContext({
+      history: String(p.history || ''), strategy: String(p.strategy || '') }) };
+  } catch (err) {
+    return { ok: false, error: err.message, count: 0,
+      examplesBlock: '', statsBlock: '', antiBlock: '' };
+  }
+});
 
 /* ---------------- IPC ---------------- */
 ipcMain.handle('deepseek:chat', async (_e, payload) => {

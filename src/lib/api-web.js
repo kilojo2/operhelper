@@ -89,6 +89,9 @@
     // База опыта (обучение на чатах, Фаза 1)
     expSave: (payload) => post('/api/exp/save', payload),
     expOutcome: (payload) => post('/api/exp/outcome', payload),
-    expStats: () => fetch('/api/exp/stats').then((r) => r.json())
+    expStats: () => fetch('/api/exp/stats').then((r) => r.json()),
+
+    // Подбор примеров из опыта (Фаза 2)
+    expExamples: (payload) => post('/api/exp/examples', payload)
   };
 })();

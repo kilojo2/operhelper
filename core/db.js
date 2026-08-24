@@ -102,6 +102,22 @@ function initSqlite() {
         .run(result, chatId);
       return { ok: true, changed: info.changes > 0 };
     },
+    getSuccessfulMessages(limitChats) {
+      const chats = db.prepare(`
+        SELECT c.id, c.strategy, c.msg_count, c.updated_at, o.result
+        FROM chats c JOIN outcomes o ON o.chat_id = c.id
+        WHERE c.status IN ('won_private','won_tip')
+        ORDER BY c.updated_at DESC LIMIT ?`).all(limitChats || 300);
+      const getMsgs = db.prepare('SELECT role, text FROM messages WHERE chat_id = ? ORDER BY id');
+      return chats.map((c) => ({ ...c, messages: getMsgs.all(c.id) }));
+    },
+    getLastLost(limitChats) {
+      const chats = db.prepare(`
+        SELECT c.id, c.strategy, c.updated_at FROM chats c
+        WHERE c.status = 'lost' ORDER BY c.updated_at DESC LIMIT ?`).all(limitChats || 1);
+      const getMsgs = db.prepare('SELECT role, text FROM messages WHERE chat_id = ? ORDER BY id');
+      return chats.map((c) => ({ ...c, messages: getMsgs.all(c.id) }));
+    },
     getStats() {
       const total = db.prepare('SELECT COUNT(*) AS n FROM chats').get().n;
       const byStatus = {};
@@ -155,6 +171,33 @@ function initJson() {
       persist();
       return { ok: true, changed: !!chat };
     },
+    getSuccessfulMessages(limitChats) {
+      const wonIds = new Set(state.outcomes
+        .filter((o) => o.result === 'won_private' || o.result === 'won_tip')
+        .map((o) => o.chat_id));
+      return state.chats
+        .filter((c) => wonIds.has(c.id))
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+        .slice(0, limitChats || 300)
+        .map((c) => ({
+          id: c.id, strategy: c.strategy, msg_count: c.msg_count,
+          updated_at: c.updated_at,
+          result: (state.outcomes.find((o) => o.chat_id === c.id) || {}).result,
+          messages: state.messages.filter((m) => m.chat_id === c.id)
+        }));
+    },
+    getLastLost(limitChats) {
+      const lostIds = new Set(state.outcomes
+        .filter((o) => o.result === 'lost').map((o) => o.chat_id));
+      return state.chats
+        .filter((c) => lostIds.has(c.id))
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+        .slice(0, limitChats || 1)
+        .map((c) => ({
+          id: c.id, strategy: c.strategy, updated_at: c.updated_at,
+          messages: state.messages.filter((m) => m.chat_id === c.id)
+        }));
+    },
     getStats() {
       const byStatus = {};
       for (const c of state.chats) byStatus[c.status] = (byStatus[c.status] || 0) + 1;
@@ -174,6 +217,103 @@ function initJson() {
       };
     }
   };
+}
+
+/* ---------------- Подбор примеров опыта (Фаза 2) ---------------- */
+const STOP_WORDS = new Set((
+  'the and you your that this with what when where how are was were have has had not for from they them their will would could should about which there here been being into over under more most some such only very just want wanna need know think thing things really right okay yes yeah hey hi hello babe baby honey girl love good nice much please thanks thank welcome because about again against between during before after above below up down out off over under why who whom its itself yourself themselves ' +
+  'это что как так для был была были быть его её они уже ещё когда чтобы если но во не на я со от до по из у же за ну да про при или очень просто хорошо отлично спасибо привет пока давай давайте хочу нравится можно нельзя нужно нужен нужна нужны которые которое которого которому моя мои мой мы ты он она их там здесь тут всё всех весь вся время день дня сейчас потом тогда сказать говорит сказала сделать сделать'
+).split(/\s+/));
+
+function extractKeywords(text) {
+  return String(text || '').toLowerCase()
+    .replace(/[^a-zа-яё0-9\s]/gi, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
+}
+
+function compressDialog(messages) {
+  const users = messages.filter((m) => m.role === 'user');
+  const models = messages.filter((m) => m.role === 'model');
+  const pick = (m) => (m ? String(m.text).replace(/\s+/g, ' ').slice(0, 140) : '—');
+  const lines = [];
+  if (users[0]) lines.push('Юзер: ' + pick(users[0]));
+  if (models[0]) lines.push('Модель: ' + pick(models[0]));
+  if (models.length > 1) lines.push('Модель (финал): ' + pick(models[models.length - 1]));
+  return lines.join('\n');
+}
+
+function monthsSince(iso) {
+  const t = Date.parse(iso || '');
+  if (!t) return 999;
+  return (Date.now() - t) / (1000 * 60 * 60 * 24 * 30);
+}
+
+/** Скоринг успешных диалогов против нового чата:
+ *  +3 за каждое совпадение ключевого слова (фетиши/темы),
+ *  +2 за ту же стратегию, +1 если диалог свежее 3 мес (иначе −2),
+ *  +1 за похожую длину диалога. */
+function findExamplesImpl(implObj, { history, strategy, limit }) {
+  const rows = implObj.getSuccessfulMessages(300);
+  if (!rows.length) return [];
+  const qKeywords = new Set(extractKeywords(history));
+  const qLines = String(history || '').split(/\r?\n/).filter(Boolean).length;
+
+  const scored = rows.map((r) => {
+    const chatKeywords = new Set(extractKeywords(r.messages.map((m) => m.text).join(' ')));
+    let overlap = 0;
+    for (const w of qKeywords) if (chatKeywords.has(w)) overlap++;
+    let score = overlap * 3;
+    if (strategy && r.strategy === strategy) score += 2;
+    score += monthsSince(r.updated_at) <= 3 ? 1 : -2;
+    const ratio = qLines ? (r.msg_count || 1) / qLines : 1;
+    if (ratio > 0.5 && ratio < 2) score += 1;
+    return { id: r.id, result: r.result, strategy: r.strategy,
+             msg_count: r.msg_count, messages: r.messages, score, overlap };
+  });
+
+  return scored
+    .filter((r) => r.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit || 3);
+}
+
+/** Готовые текст-блоки для промпта: примеры, анти-пример, статистика. */
+function getExperienceContextImpl(implObj, { history, strategy }) {
+  const blocks = { count: 0, examplesBlock: '', statsBlock: '', antiBlock: '' };
+
+  const examples = findExamplesImpl(implObj, { history, strategy, limit: 3 });
+  blocks.count = examples.length;
+  if (examples.length) {
+    const parts = examples.map((ex, i) => {
+      const label = ex.result === 'won_tip' ? 'донат' : 'приват';
+      return `--- Пример ${i + 1} (исход: ${label}, стратегия: ${ex.strategy || '—'}) ---\n` +
+             compressDialog(ex.messages);
+    });
+    blocks.examplesBlock =
+      'ПРОВЕРЕННЫЕ ПРИМЕРЫ ИЗ ОПЫТА ОПЕРАТОРА (реальные диалоги, ЗАКОНЧИВШИЕСЯ РЕЗУЛЬТАТОМ — бери тон, приёмы и структуру, не копируй дословно):\n' +
+      parts.join('\n');
+  }
+
+  const stats = implObj.getStats();
+  if (stats.total > 0) {
+    const stratLine = stats.byStrategy
+      .map((s) => `${s.strategy}: ${s.total} диалогов, конверсия ${
+        s.total ? Math.round(s.won / s.total * 100) : 0}%`)
+      .join(' | ');
+    blocks.statsBlock =
+      `СТАТИСТИКА ПО БАЗЕ ОПЫТА (используй при выборе стратегии): всего диалогов ${stats.total}, ` +
+      `конверсия в приват/донат ${stats.conversion}%. По стратегиям: ${stratLine}.`;
+  }
+
+  const lost = implObj.getLastLost(1);
+  if (lost.length) {
+    blocks.antiBlock =
+      'АНТИ-ПРИМЕР (в похожем диалоге это привело к сливу юзера — не повторяй таких ошибок):\n' +
+      compressDialog(lost[0].messages);
+  }
+
+  return blocks;
 }
 
 /* ---------------- Инициализация и публичный API ---------------- */
@@ -197,6 +337,7 @@ module.exports = {
   engineName: () => init().name,
   saveChat: (p) => init().saveChat(p || {}),
   markOutcome: (chatId, result, revenue) => init().markOutcome(chatId, result, revenue),
-  getStats: () => init().getStats()
+  getStats: () => init().getStats(),
+  getExperienceContext: (p) => getExperienceContextImpl(init(), p || {})
 };
 

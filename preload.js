@@ -27,5 +27,8 @@ contextBridge.exposeInMainWorld('api', {
   // База опыта (обучение на чатах, Фаза 1)
   expSave: (payload) => ipcRenderer.invoke('exp:save', payload),
   expOutcome: (payload) => ipcRenderer.invoke('exp:outcome', payload),
-  expStats: () => ipcRenderer.invoke('exp:stats')
+  expStats: () => ipcRenderer.invoke('exp:stats'),
+
+  // Подбор примеров из опыта (Фаза 2)
+  expExamples: (payload) => ipcRenderer.invoke('exp:examples', payload)
 });
