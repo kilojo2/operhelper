@@ -43,7 +43,12 @@
 
   /* ---------- Вкладки ---------- */
   window.switchTab = function switchTab(name) {
-    $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    $$('.tab').forEach((b) => {
+      const active = b.dataset.tab === name;
+      b.classList.toggle('active', active);
+      if (active) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
     $$('.tab-page').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
     if (name === 'experience' && window.ExperienceTab) ExperienceTab.load();
   };
@@ -51,6 +56,26 @@
   function initTabs() {
     $$('.tab').forEach(btn =>
       btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+  }
+
+  function initExperience() {
+    const btn = $('#clearExperienceBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      if (!confirm('Удалить всю базу опыта и статистику без возможности восстановления?')) return;
+      btn.disabled = true;
+      const status = $('#clearExperienceStatus');
+      try {
+        const res = await window.api.expClear();
+        if (!res || !res.ok) throw new Error((res && res.error) || 'Ошибка очистки');
+        status.textContent = `Удалено диалогов: ${res.deleted || 0}. Локальные рабочие чаты сохранены.`;
+        await ExperienceTab.load();
+      } catch (e) {
+        status.textContent = '❌ ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   /* ---------- Поверх всех окон (только десктоп) ---------- */
@@ -175,30 +200,38 @@
       const st = $('#testKeyStatus');
       const typedKey = $('#apiKeyInput').value.trim();
       st.className = ''; st.textContent = typedKey ? '⏳ Проверяю...' : '⏳ Проверяю сохранённый ключ...';
-      const res = await window.api.testKey({
-        apiKey: typedKey, // пусто = проверить ключ, хранящийся на сервере / в main-процессе (F-01)
-        model: $('#modelSel').value
-      });
-      if (res.ok) {
+      try {
+        const res = await window.api.testKey({
+          apiKey: typedKey, // пусто = проверить ключ, хранящийся на сервере / в main-процессе (F-01)
+          model: $('#modelSel').value
+        });
+        if (!res || !res.ok) throw new Error((res && res.error) || 'Проверка не удалась');
         AppState.config.hasKey = true;
         $('#apiKeyInput').placeholder = '•••• (ключ сохранён)';
         st.className = 'ok'; st.textContent = '✅ Ключ работает (' + res.ms + ' мс)';
+      } catch (e) {
+        st.className = 'err'; st.textContent = '❌ ' + e.message;
       }
-      else { st.className = 'err'; st.textContent = '❌ ' + res.error; }
     });
 
     $('#saveSettingsBtn').addEventListener('click', async () => {
       const typedKey = $('#apiKeyInput').value.trim();
-      AppState.config = Object.assign({}, AppState.config, collectSettings());
-      await window.api.saveConfig(AppState.config);
-      if (typedKey) {
-        // F-01: ключ не хранится в интерфейсе — после сохранения сразу забываем его
-        AppState.config.hasKey = true;
-        $('#apiKeyInput').value = '';
-        $('#apiKeyInput').placeholder = '•••• (ключ сохранён)';
-      }
       const s = $('#saveStatus');
-      s.textContent = '✅ Настройки сохранены';
+      try {
+        const next = Object.assign({}, AppState.config, collectSettings());
+        const res = await window.api.saveConfig(next);
+        if (res && res.ok === false) throw new Error(res.error || 'Ошибка сохранения');
+        delete next.apiKey;
+        if (typedKey) next.hasKey = true;
+        AppState.config = next;
+        $('#apiKeyInput').value = '';
+        if (next.hasKey) $('#apiKeyInput').placeholder = '•••• (ключ сохранён)';
+        s.className = 'ok';
+        s.textContent = '✅ Настройки сохранены';
+      } catch (e) {
+        s.className = 'err';
+        s.textContent = '❌ ' + e.message;
+      }
       setTimeout(() => { s.textContent = ''; }, 2500);
     });
   }
@@ -216,8 +249,18 @@
   function saveMusic(arr) { localStorage.setItem(MUSIC_KEY, JSON.stringify(arr)); }
 
   function ytId(url) {
-    const m = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/.exec(url || '');
-    return m ? m[1] : '';
+    try {
+      const raw = String(url || '').trim();
+      const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : 'https://' + raw);
+      const host = parsed.hostname.toLowerCase();
+      let id = '';
+      if (host === 'youtu.be') id = parsed.pathname.split('/').filter(Boolean)[0] || '';
+      else if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+        if (parsed.pathname === '/watch') id = parsed.searchParams.get('v') || '';
+        else id = parsed.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]{11})(?:\/|$)/)?.[1] || '';
+      }
+      return /^[\w-]{11}$/.test(id) ? id : '';
+    } catch { return ''; }
   }
 
   function initMusic() {
@@ -492,6 +535,7 @@
     // 1) Сначала привязываем интерфейс — кнопки работают даже если сервер недоступен
     try {
       initTabs();
+      initExperience();
       initOnTop();
       Assistant.init();
     } catch (e) { console.error('Ошибка инициализации интерфейса:', e); }
@@ -516,6 +560,4 @@
     } catch (e) { console.error('Ошибка отрисовки данных:', e); }
   });
 })();
-
-
 

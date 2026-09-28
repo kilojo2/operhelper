@@ -34,7 +34,8 @@ const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
    протоколом и слэшем — «https://abc.up.railway.app/» тоже сработает:
    ALLOWED_HOSTS=my-app.up.railway.app */
 const EXTRA_HOSTS = new Set(
-  String(process.env.ALLOWED_HOSTS || '')
+  [process.env.ALLOWED_HOSTS, process.env.RAILWAY_PUBLIC_DOMAIN, process.env.RAILWAY_STATIC_URL]
+    .filter(Boolean).join(',')
     .split(',')
     .map((s) => s.trim().toLowerCase()
       .replace(/^[a-z][a-z0-9+.-]*:\/\//, '') // убрать протокол (https://)
@@ -49,6 +50,11 @@ const DATA_DIR = path.resolve(__dirname, '..', 'data');
 const exp = require('../core/db'); // база опыта (обучение на чатах, Фаза 1)
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+const MAX_CHAT_CHARS = 200 * 1024;
+const MAX_CONCURRENT_CHATS = Math.max(1, Math.min(32,
+  parseInt(process.env.MAX_CONCURRENT_CHATS || '4', 10) || 4));
+const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
+let activeChats = 0;
 const MAX_BODY = 512 * 1024; // 512 КБ на запрос (истории чатов бывают длинные)
 
 /* ---------------- Конфиг (F-04: вне папки проекта) ---------------- */
@@ -90,7 +96,12 @@ function log(line) { console.log(`[${new Date().toISOString()}] ${line}`); }
 
 
 /* ---------------- Ответы и файлы (F-06) ---------------- */
-const BASE_HEADERS = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
+const BASE_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Cross-Origin-Opener-Policy': 'same-origin'
+};
 const API_HEADERS = Object.assign({}, BASE_HEADERS, {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store'
@@ -139,14 +150,27 @@ function safePath(base, urlPath) {
 /* ---------------- Тело запроса (F-02: только application/json) ---------------- */
 function readBody(req) {
   return new Promise((resolve, reject) => {
+    const declared = Number(req.headers['content-length'] || 0);
+    if (Number.isFinite(declared) && declared > MAX_BODY) {
+      req.resume();
+      reject(new ApiError(413, 'Слишком большое тело запроса'));
+      return;
+    }
     let size = 0;
     const chunks = [];
+    let tooLarge = false;
     req.on('data', (c) => {
+      if (tooLarge) return;
       size += c.length;
-      if (size > MAX_BODY) { reject(new ApiError(413, 'Слишком большое тело запроса')); req.destroy(); return; }
+      if (size > MAX_BODY) {
+        tooLarge = true;
+        chunks.length = 0;
+        reject(new ApiError(413, 'Слишком большое тело запроса'));
+        return;
+      }
       chunks.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    req.on('end', () => { if (!tooLarge) resolve(Buffer.concat(chunks).toString('utf-8')); });
     req.on('error', reject);
   });
 }
@@ -164,25 +188,41 @@ const RATE_RULES = [
   { re: /^\/api\/chat$/, capacity: 20, perMinute: 20 }
 ];
 const RATE_DEFAULT = { capacity: 60, perMinute: 60 };
+const RATE_GLOBAL_CHAT = {
+  capacity: Math.max(1, parseInt(process.env.CHAT_GLOBAL_PER_MINUTE || '60', 10) || 60),
+  perMinute: Math.max(1, parseInt(process.env.CHAT_GLOBAL_PER_MINUTE || '60', 10) || 60)
+};
+const TRUST_PROXY = String(process.env.TRUST_PROXY || '') === '1';
+const MAX_RATE_BUCKETS = 10000;
 const buckets = new Map();
 function clientIp(req) {
-  /* За обратным прокси (Railway) реальный IP посетителя приходит в X-Forwarded-For */
-  const xff = String(req.headers['x-forwarded-for'] || '');
-  if (xff) return xff.split(',')[0].trim();
+  /* Доверяем X-Forwarded-For только за явно настроенным sanitizing-прокси. */
+  const xff = TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '') : '';
+  if (xff) return xff.split(',')[0].trim().slice(0, 64);
   return String(req.socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
+}
+function consumeBucket(key, rule, now) {
+  let b = buckets.get(key);
+  if (!b) {
+    if (buckets.size >= MAX_RATE_BUCKETS) return 60;
+    b = { tokens: rule.capacity, ts: now };
+    buckets.set(key, b);
+  }
+  b.tokens = Math.min(rule.capacity, b.tokens + ((now - b.ts) / 60000) * rule.perMinute);
+  b.ts = now;
+  if (b.tokens < 1) return Math.max(1, Math.ceil(((1 - b.tokens) / rule.perMinute) * 60));
+  b.tokens -= 1;
+  return 0;
 }
 /** Возвращает 0 если запрос разрешён, иначе сколько секунд подождать (Retry-After). */
 function rateLimit(req, pathname) {
   const rule = RATE_RULES.find((r) => r.re.test(pathname)) || RATE_DEFAULT;
   const key = `${clientIp(req)}|${rule === RATE_DEFAULT ? '*' : rule.re.source}`;
   const now = Date.now();
-  let b = buckets.get(key);
-  if (!b) { b = { tokens: rule.capacity, ts: now }; buckets.set(key, b); }
-  b.tokens = Math.min(rule.capacity, b.tokens + ((now - b.ts) / 60000) * rule.perMinute);
-  b.ts = now;
-  if (b.tokens < 1) return Math.max(1, Math.ceil(((1 - b.tokens) / rule.perMinute) * 60));
-  b.tokens -= 1;
-  return 0;
+  const ipRetry = consumeBucket(key, rule, now);
+  const globalRetry = pathname === '/api/chat'
+    ? consumeBucket('global|chat', RATE_GLOBAL_CHAT, now) : 0;
+  return Math.max(ipRetry, globalRetry);
 }
 setInterval(() => { // периодическая уборка «мёртвых» бакетов
   const cutoff = Date.now() - 15 * 60 * 1000;
@@ -204,6 +244,10 @@ const ENV_TOKEN = String(process.env.ACCESS_TOKEN || '');
 const TOKEN_DISABLED = ENV_TOKEN.toLowerCase() === 'off';
 const TOKEN_REQUIRED = TOKEN_DISABLED ? false : (!!ENV_TOKEN || !isLoopbackBind());
 const ACCESS_TOKEN = TOKEN_DISABLED ? '' : (ENV_TOKEN || crypto.randomBytes(24).toString('hex'));
+const ENV_ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '');
+const ADMIN_TOKEN_REQUIRED = !!ENV_ADMIN_TOKEN || TOKEN_REQUIRED || !isLoopbackBind();
+const ADMIN_TOKEN = ENV_ADMIN_TOKEN || (ADMIN_TOKEN_REQUIRED
+  ? crypto.randomBytes(24).toString('hex') : '');
 
 function hostnameOfHostHeader(header) {
   try {
@@ -245,22 +289,36 @@ function originAllowed(req) {
     return port === PORT;
   } catch { return false; }
 }
-function tokenOk(req) {
-  if (!TOKEN_REQUIRED) return true;
-  let qtoken = '';
-  try { qtoken = new URL(req.url, 'http://x').searchParams.get('token') || ''; } catch { /* ignore */ }
-  const provided = String(req.headers['x-access-token'] || '') || qtoken;
+function tokenEquals(expected, provided) {
   if (!provided) return false;
   const a = Buffer.from(String(provided));
-  const b = Buffer.from(ACCESS_TOKEN);
+  const b = Buffer.from(String(expected));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+function requestToken(req, header, queryName) {
+  let queryToken = '';
+  try { queryToken = new URL(req.url, 'http://x').searchParams.get(queryName) || ''; }
+  catch { /* ignore */ }
+  return String(req.headers[header] || '') || queryToken;
+}
+function tokenOk(req) {
+  return !TOKEN_REQUIRED || tokenEquals(ACCESS_TOKEN,
+    requestToken(req, 'x-access-token', 'token'));
+}
+function adminTokenOk(req) {
+  return !ADMIN_TOKEN_REQUIRED || tokenEquals(ADMIN_TOKEN,
+    requestToken(req, 'x-admin-token', 'adminToken'));
+}
+function adminApi(method, pathname) {
+  return (method === 'POST' && (pathname === '/api/config' || pathname === '/api/test-key')) ||
+         pathname.startsWith('/api/exp/');
+}
 /* ---------------- DeepSeek ---------------- */
-/* Приоритет ключа: переданный в запросе -> сохранённый в config.json -> переменная окружения */
+/* Введённый для проверки ключ имеет приоритет; рабочий env-ключ нельзя затереть web-конфигом. */
 function resolveApiKey(provided) {
   return (provided && String(provided).trim()) ||
-         (loadConfig().apiKey || '') ||
-         (process.env.DEEPSEEK_API_KEY || '');
+         (process.env.DEEPSEEK_API_KEY || '') ||
+         (loadConfig().apiKey || '');
 }
 
 async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens }) {
@@ -268,12 +326,13 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
     throw new Error('API-ключ не задан. Откройте вкладку «Настройки» и впишите ключ DeepSeek.');
   }
   const body = {
-    model: model && String(model).trim() ? String(model).trim() : 'deepseek-chat',
+    model: ALLOWED_MODELS.has(String(model || '')) ? String(model) : 'deepseek-chat',
     messages,
-    temperature: typeof temperature === 'number' ? temperature : 1.3,
+    temperature: typeof temperature === 'number' && Number.isFinite(temperature)
+      ? Math.min(2, Math.max(0, temperature)) : 1.3,
     stream: false
   };
-  if (maxTokens) body.max_tokens = maxTokens;
+  body.max_tokens = Math.min(4096, Math.max(1, Number(maxTokens) || 1800));
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
@@ -305,7 +364,7 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
 function publicConfig() {
   const cfg = loadConfig();
   return {
-    hasKey: !!(cfg.apiKey && String(cfg.apiKey).trim()),
+    hasKey: !!resolveApiKey(),
     model: cfg.model || 'deepseek-chat',
     temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 1.3,
     profile: (cfg.profile && typeof cfg.profile === 'object' && !Array.isArray(cfg.profile)) ? cfg.profile : {}
@@ -314,7 +373,11 @@ function publicConfig() {
 function strField(v, max) { return typeof v === 'string' ? v.slice(0, max) : undefined; }
 function sanitizeConfigInput(body) {
   const out = {};
-  if (body.model !== undefined) out.model = (strField(body.model, 64) || '').trim() || 'deepseek-chat';
+  if (body.model !== undefined) {
+    const model = (strField(body.model, 64) || '').trim();
+    if (!ALLOWED_MODELS.has(model)) throw new ApiError(400, 'model: недопустимое значение');
+    out.model = model;
+  }
   if (body.temperature !== undefined) {
     const t = Number(body.temperature);
     out.temperature = Number.isFinite(t) ? Math.min(2, Math.max(0, t)) : 1.3;
@@ -342,29 +405,39 @@ async function handleApi(req, res, pathname) {
     next.apiKey = newKey || cur.apiKey || ''; // пустое/отсутствует = «не менять» (F-01)
     saveConfig(next);
     log(`конфиг обновлён (${newKey ? 'ключ заменён' : 'ключ сохранён прежний'})`);
-    return json(res, 200, { ok: true, hasKey: !!next.apiKey });
+    return json(res, 200, { ok: true, hasKey: !!resolveApiKey() });
   }
   if (req.method === 'POST' && pathname === '/api/test-key') {
     const body = await readJson(req);
+    const started = Date.now();
     // можно проверить как сохранённый/env-ключ, так и только что введённый (до сохранения)
     const typed = body.apiKey && String(body.apiKey).trim();
     const key = typed || resolveApiKey();
     try {
       await callDeepSeek({ apiKey: key, model: body.model,
         messages: [{ role: 'user', content: 'Reply with exactly: OK' }], maxTokens: 10 });
-      return json(res, 200, { ok: true });
+      return json(res, 200, { ok: true, ms: Date.now() - started });
     } catch (e) { return json(res, 200, { ok: false, error: e.message }); }
   }
   if (req.method === 'POST' && pathname === '/api/chat') {
     const body = await readJson(req);
     const msgs = Array.isArray(body.messages) ? body.messages : null;
-    if (!msgs || !msgs.length || msgs.length > 60)
-      throw new ApiError(400, 'messages: ожидается непустой массив сообщений (до 60)');
+    if (!msgs || !msgs.length || msgs.length > 20)
+      throw new ApiError(400, 'messages: ожидается непустой массив сообщений (до 20)');
+    let totalChars = 0;
     for (const m of msgs) {
       if (!m || typeof m.content !== 'string' ||
           ['system', 'user', 'assistant'].indexOf(m.role) === -1)
         throw new ApiError(400, 'messages: некорректное сообщение');
+      totalChars += m.content.length;
     }
+    if (totalChars > MAX_CHAT_CHARS)
+      throw new ApiError(413, 'messages: суммарный текст слишком большой');
+    if (!ALLOWED_MODELS.has(String(body.model || 'deepseek-chat')))
+      throw new ApiError(400, 'model: недопустимое значение');
+    if (activeChats >= MAX_CONCURRENT_CHATS)
+      throw new ApiError(503, 'Слишком много одновременных запросов к AI');
+    activeChats++;
     try {
       const content = await callDeepSeek({
         apiKey: resolveApiKey(), // F-01/F-02: только серверный ключ (config или env), body.apiKey игнорируется
@@ -372,8 +445,9 @@ async function handleApi(req, res, pathname) {
       });
       return json(res, 200, { ok: true, content });
     } catch (e) {
-      // Ошибки DeepSeek/сети отдаём клиенту управляемо ({ok:false,error}), а не 500-й
-      return json(res, 200, { ok: false, error: e.message });
+      return json(res, 502, { ok: false, error: e.message });
+    } finally {
+      activeChats--;
     }
   }
   if (req.method === 'GET' && pathname === '/api/data') {
@@ -391,12 +465,15 @@ async function handleApi(req, res, pathname) {
   }
   if (req.method === 'POST' && pathname === '/api/exp/save') {
     const body = await readJson(req);
-    if (!body.history || String(body.history).trim().length < 5)
+    const history = String(body.history || '');
+    if (history.trim().length < 5)
       throw new ApiError(400, 'history: вставьте историю чата (минимум 5 символов)');
+    if (history.length > MAX_CHAT_CHARS)
+      throw new ApiError(413, 'history: текст слишком большой');
     let saved;
     try {
       saved = exp.saveChat({
-        history: String(body.history),
+        history,
         strategy: strField(body.strategy, 20) || '',
         platform: strField(body.platform, 40) || ''
       });
@@ -447,6 +524,16 @@ async function handleApi(req, res, pathname) {
     }
     return json(res, 200, { ok: true, stats });
   }
+  if (req.method === 'POST' && pathname === '/api/exp/clear') {
+    await readJson(req);
+    try {
+      const result = exp.clearAll();
+      log('опыт: база очищена администратором');
+      return json(res, 200, { ok: true, ...result });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: 'Не удалось очистить базу опыта: ' + e.message });
+    }
+  }
   return json(res, 404, { error: 'Неизвестный API-маршрут' });
 }
 /* ---------------- HTTP-сервер ---------------- */
@@ -489,6 +576,12 @@ const server = http.createServer(async (req, res) => {
       if (!tokenOk(req)) {
         return json(res, 401, { error: TOKEN_REQUIRED ? 'Требуется токен доступа' : '', needToken: TOKEN_REQUIRED });
       }
+      if (adminApi(req.method, pathname) && !adminTokenOk(req)) {
+        return json(res, 403, {
+          error: 'Требуется административный токен',
+          needAdminToken: ADMIN_TOKEN_REQUIRED
+        });
+      }
 
       return await handleApi(req, res, pathname);
     }
@@ -513,6 +606,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  const publicHost = [...EXTRA_HOSTS][0];
+  const publicBase = publicHost ? `https://${publicHost}` : `http://<IP-этого-ПК>:${PORT}`;
   console.log('');
   console.log('🎬 Operator Helper (веб-версия) запущен!');
   console.log(`   Локальный адрес:  http://localhost:${PORT}`);
@@ -523,15 +618,19 @@ server.listen(PORT, HOST, () => {
     console.log('');
     console.log(`⚠️  Сервер открыт ПО СЕТИ (HOST=${HOST}). Для доступа к /api обязателен токен:`);
     console.log(`   Токен доступа: ${ACCESS_TOKEN}`);
-    console.log(`   Ссылка для клиентов: http://<IP-этого-ПК>:${PORT}/?token=${ACCESS_TOKEN}`);
+    console.log(`   Ссылка для клиентов: ${publicBase}/#token=${encodeURIComponent(ACCESS_TOKEN)}`);
   } else if (!isLoopbackBind() && TOKEN_DISABLED) {
     console.log('');
     console.log('⚠️  ACCESS_TOKEN=off: API открыт всем, кто знает адрес сайта.');
+  }
+  if (ADMIN_TOKEN_REQUIRED) {
+    const auth = new URLSearchParams();
+    if (TOKEN_REQUIRED) auth.set('token', ACCESS_TOKEN);
+    auth.set('adminToken', ADMIN_TOKEN);
+    console.log(`   Административный токен: ${ADMIN_TOKEN}`);
+    console.log(`   Ссылка администратора: ${publicBase}/#${auth.toString()}`);
   }
   if (EXTRA_HOSTS.size) {
     console.log(`   Разрешённые внешние домены: ${[...EXTRA_HOSTS].join(', ')}`);
   }
 });
-
-
-

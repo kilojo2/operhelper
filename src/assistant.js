@@ -13,6 +13,7 @@
   let activeId = null;
   let invitesLib = [];
   let invitesRawText = '';
+  let saveTimer = null;
 
   /* ---------- Хранилище чатов (localStorage) ---------- */
   function loadChats() {
@@ -26,7 +27,21 @@
       try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch { /* ignore */ }
     }
   }
-  function saveChats() { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); }
+  function saveChats() {
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+      return true;
+    } catch (e) {
+      console.warn('Не удалось сохранить чаты:', e);
+      return false;
+    }
+  }
+  function scheduleSaveChats() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (!saveChats()) setStatus('Не удалось сохранить историю: хранилище браузера переполнено', true);
+    }, 300);
+  }
   function touch(c) { if (c) c.updatedAt = Date.now(); }
   // F-09: ручная очистка всех переписок (PII третьих лиц)
   function clearAllChats() {
@@ -84,8 +99,14 @@
   }
 
   /* ---------- Модалка «Добавить чат» ---------- */
-  function askAddChat() { $('#modalOverlay').classList.remove('hidden'); }
-  function closeModal() { $('#modalOverlay').classList.add('hidden'); }
+  function askAddChat() {
+    $('#modalOverlay').classList.remove('hidden');
+    $('#modalOkBtn').focus();
+  }
+  function closeModal() {
+    $('#modalOverlay').classList.add('hidden');
+    $('#addChatBtn').focus();
+  }
 
   /* ---------- Результат анализа ---------- */
   function chipClass(line) {
@@ -191,8 +212,8 @@
         model: cfg.model || 'deepseek-chat',
         temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 1.3,
         messages: [
-          { role: 'system', content: Prompts.buildSystemPrompt(cfg.profile, invitesRawText, expBlock) },
-          { role: 'user', content: Prompts.buildUserPrompt(hist, c.strategy) }
+          { role: 'system', content: Prompts.buildSystemPrompt(cfg.profile, invitesRawText) },
+          { role: 'user', content: Prompts.buildUserPrompt(hist, c.strategy, expBlock) }
         ]
       });
       if (!res.ok) { setStatus('❌ ' + res.error, true); return; }
@@ -303,6 +324,7 @@
     renderChatList();
 
     $('#addChatBtn').addEventListener('click', askAddChat);
+    document.querySelector('.empty-add').addEventListener('click', askAddChat);
     $('#modalBackBtn').addEventListener('click', closeModal);
     $('#modalOkBtn').addEventListener('click', () => {
       closeModal();
@@ -313,6 +335,9 @@
     });
     $('#modalOverlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('#modalOverlay').classList.contains('hidden')) closeModal();
     });
 
     $('#deleteChatBtn').addEventListener('click', () => {
@@ -340,12 +365,19 @@
     });
 
     $('#analyzeBtn').addEventListener('click', analyze);
+    $('#historyInput').addEventListener('input', () => {
+      const c = getActive();
+      if (!c) return;
+      c.history = $('#historyInput').value;
+      touch(c);
+      scheduleSaveChats();
+    });
     $('#historyInput').addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.key === 'Enter') analyze();
     });
     $('#strategySel').addEventListener('change', () => {
       const c = getActive();
-      if (c) { c.strategy = $('#strategySel').value; saveChats(); }
+      if (c) { c.strategy = $('#strategySel').value; touch(c); saveChats(); }
     });
     $('#libSearch').addEventListener('input', (e) => renderLib(e.target.value));
 
@@ -362,5 +394,3 @@
 
   window.Assistant = { init, initLibrary };
 })();
-
-

@@ -7,6 +7,9 @@ const path = require('path');
 const fs = require('fs');
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+const DEEPSEEK_TIMEOUT_MS = 90000;
+const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
+const MAX_CHAT_CHARS = 200 * 1024;
 let mainWindow = null;
 
 /* ---------------- Конфиг (F-04: ключ шифруется через Electron safeStorage) ---------------- */
@@ -54,8 +57,15 @@ function getStoredApiKey(cfg) {
 /** F-01: пустое/отсутствующее поле apiKey = «оставить прежний ключ». */
 function saveConfig(incoming) {
   const cur = loadConfig();
-  const next = Object.assign({}, cur, incoming || {});
-  delete next.hasKey;
+  const data = incoming && typeof incoming === 'object' ? incoming : {};
+  const next = Object.assign({}, cur);
+  if (ALLOWED_MODELS.has(data.model)) next.model = data.model;
+  if (Number.isFinite(data.temperature)) next.temperature = Math.max(0, Math.min(2, data.temperature));
+  if (data.profile && typeof data.profile === 'object') {
+    next.profile = {};
+    for (const key of ['name', 'age', 'look', 'persona', 'allowed', 'forbidden'])
+      next.profile[key] = String(data.profile[key] || '').slice(0, 5000);
+  }
   const newKey = incoming && typeof incoming.apiKey === 'string' ? incoming.apiKey.trim() : '';
   if (newKey) next.apiKeySecret = sealSecret(newKey);
   delete next.apiKey; // в файле ключ живёт только внутри зашифрованного apiKeySecret
@@ -67,15 +77,29 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
   if (!apiKey || !String(apiKey).trim()) {
     throw new Error('API-ключ не задан. Откройте вкладку «Настройки» и впишите ключ DeepSeek.');
   }
+  if (!Array.isArray(messages) || !messages.length || messages.length > 20)
+    throw new Error('Некорректный список сообщений');
+  const safeMessages = messages.map((m) => ({
+    role: ['system', 'user', 'assistant'].includes(m && m.role) ? m.role : 'user',
+    content: String(m && m.content || '')
+  }));
+  if (safeMessages.reduce((n, m) => n + m.content.length, 0) > MAX_CHAT_CHARS)
+    throw new Error('Сообщение слишком большое');
+  const safeModel = ALLOWED_MODELS.has(model) ? model : 'deepseek-chat';
+  const safeTemperature = Number.isFinite(temperature) ? Math.max(0, Math.min(2, temperature)) : 1.3;
+  const safeMaxTokens = Number.isFinite(maxTokens)
+    ? Math.max(1, Math.min(4096, Math.floor(maxTokens))) : 1800;
   const body = {
-    model: model && String(model).trim() ? String(model).trim() : 'deepseek-chat',
-    messages,
-    temperature: typeof temperature === 'number' ? temperature : 1.3,
+    model: safeModel,
+    messages: safeMessages,
+    temperature: safeTemperature,
+    max_tokens: safeMaxTokens,
     stream: false
   };
-  if (maxTokens) body.max_tokens = maxTokens;
 
   let res;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEEPSEEK_TIMEOUT_MS);
   try {
     res = await fetch(DEEPSEEK_URL, {
       method: 'POST',
@@ -83,10 +107,15 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
         'Content-Type': 'application/json',
         Authorization: `Bearer ${String(apiKey).trim()}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
-  } catch {
+  } catch (err) {
+    if (err && err.name === 'AbortError')
+      throw new Error('DeepSeek не ответил за 90 секунд. Попробуйте ещё раз.');
     throw new Error('Нет соединения с api.deepseek.com — проверьте интернет.');
+  } finally {
+    clearTimeout(timeout);
   }
 
   const data = await res.json().catch(() => null);
@@ -143,6 +172,10 @@ ipcMain.handle('exp:stats', () => {
   try { return { ok: true, stats: exp.getAnalytics() }; }
   catch (err) { return { ok: false, error: err.message }; }
 });
+ipcMain.handle('exp:clear', () => {
+  try { return exp.clearAll(); }
+  catch (err) { return { ok: false, error: err.message }; }
+});
 ipcMain.handle('exp:examples', (_e, payload) => {
   try {
     const p = payload || {};
@@ -159,7 +192,7 @@ ipcMain.handle('deepseek:chat', async (_e, payload) => {
   try {
     const p = Object.assign({}, payload || {});
     // F-01: интерфейсу ключ недоступен — подставляем сохранённый в main-процессе
-    if (!p.apiKey || !String(p.apiKey).trim()) p.apiKey = getStoredApiKey();
+    p.apiKey = getStoredApiKey();
     const content = await callDeepSeek(p);
     return { ok: true, content };
   } catch (err) {
@@ -193,10 +226,19 @@ ipcMain.handle('config:load', () => {
   return pub;
 });
 // F-01: пустое поле ключа при сохранении = «не менять сохранённый»
-ipcMain.handle('config:save', (_e, cfg) => { saveConfig(cfg); return true; });
+ipcMain.handle('config:save', (_e, cfg) => {
+  try { saveConfig(cfg); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+});
 
 ipcMain.handle('shell:openExternal', (_e, url) => {
-  if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (parsed.protocol === 'https:' &&
+        (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be'))
+      shell.openExternal(parsed.href);
+  } catch { /* неверная ссылка */ }
 });
 
 ipcMain.handle('window:setOnTop', (_e, flag) => {

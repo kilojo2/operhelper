@@ -1,6 +1,6 @@
 /**
  * Тест базы опыта (Фаза 1). Запуск: node tests/db.test.js
- * JSON-fallback проверяется всегда; SQLite — если better-sqlite3 доступен.
+ * Проверяются оба поддерживаемых движка: JSON и встроенный node:sqlite.
  */
 const path = require('path');
 const os = require('os');
@@ -48,14 +48,25 @@ function runSuite(engine) {
   ok(st.byStatus.lost === 1 && !st.byStatus.won_private,
     `[${engine}] повторная отметка перезаписывает исход`);
 
+  let orphanRejected = false;
+  try { db.markOutcome(999999, 'won_tip', 10); } catch { orphanRejected = true; }
+  ok(orphanRejected, `[${engine}] исход не создаётся для несуществующего чата`);
+
+  let invalidRejected = false;
+  try { db.markOutcome(saved.chatId, 'invalid-result', 0); } catch { invalidRejected = true; }
+  ok(invalidRejected, `[${engine}] недопустимый исход отклонён`);
+
+  const cleared = db.clearAll();
+  ok(cleared.ok && cleared.deleted === 2 && db.getStats().total === 0,
+    `[${engine}] clearAll полностью очищает базу`);
+
   for (const f of [tmp, tmp + '.json', tmp + '-wal', tmp + '-shm']) {
     try { fs.rmSync(f, { force: true }); } catch { /* ignore */ }
   }
 }
 
 runSuite('json');
-try { require('better-sqlite3'); runSuite('sqlite'); }
-catch { console.log('SKIP sqlite (better-sqlite3 недоступен — работает JSON-fallback)'); }
+runSuite('sqlite');
 
 console.log(failed ? ('\nИТОГ: ПРОВАЛЕНО ' + failed) : '\nИТОГ: ВСЕ ТЕСТЫ ПРОШЛИ');
 process.exit(failed ? 1 : 0);

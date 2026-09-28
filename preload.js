@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   expSave: (payload) => ipcRenderer.invoke('exp:save', payload),
   expOutcome: (payload) => ipcRenderer.invoke('exp:outcome', payload),
   expStats: () => ipcRenderer.invoke('exp:stats'),
+  expClear: () => ipcRenderer.invoke('exp:clear'),
 
   // Подбор примеров из опыта (Фаза 2)
   expExamples: (payload) => ipcRenderer.invoke('exp:examples', payload)

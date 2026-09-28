@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self' 'unsafe-inline'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; connect-src 'self'; form-action 'self';">
 <title>Operator Helper</title>
@@ -10,18 +11,24 @@
 <body>
 
 <header id="titlebar">
-  <div class="brand">🎬 <b>Operator&nbsp;Helper</b></div>
+  <div class="brand">
+    <div class="brand-mark">OH</div>
+    <div class="brand-copy"><b>Operator Helper</b><span>stream operations</span></div>
+  </div>
   <nav id="tabs">
-    <button class="tab active" data-tab="assistant">🤖 Ассистент</button>
-    <button class="tab" data-tab="music">🎵 Музыка</button>
-    <button class="tab" data-tab="tipmenu">💎 Тип-меню</button>
-    <button class="tab" data-tab="goalsgen">🎲 Генератор</button>
-    <button class="tab" data-tab="experience">📈 Опыт</button>
-    <button class="tab" data-tab="settings">⚙️ Настройки</button>
+    <button class="tab active" data-tab="assistant" aria-current="page"><span class="tab-icon">✦</span><span class="tab-label">Ассистент</span></button>
+    <button class="tab" data-tab="music"><span class="tab-icon">♪</span><span class="tab-label">Музыка</span></button>
+    <button class="tab" data-tab="tipmenu"><span class="tab-icon">◇</span><span class="tab-label">Тип-меню</span></button>
+    <button class="tab" data-tab="goalsgen"><span class="tab-icon">⌁</span><span class="tab-label">Генератор</span></button>
+    <button class="tab" data-tab="experience"><span class="tab-icon">↗</span><span class="tab-label">Опыт</span></button>
+    <button class="tab" data-tab="settings"><span class="tab-icon">⚙</span><span class="tab-label">Настройки</span></button>
   </nav>
-  <label class="ontop" title="Держать окно поверх стрима и браузера">
-    <input type="checkbox" id="onTop"> 📌 поверх всех окон
-  </label>
+  <div class="rail-footer">
+    <div class="system-state"><i></i><span>Система готова</span></div>
+    <label class="ontop" title="Держать окно поверх стрима и браузера">
+      <input type="checkbox" id="onTop"><span>Поверх окон</span>
+    </label>
+  </div>
 </header>
 
 <main>
@@ -29,23 +36,28 @@
 <!-- ===================== АССИСТЕНТ ===================== -->
 <section id="tab-assistant" class="tab-page active">
   <aside id="chatListPane">
-    <button id="addChatBtn" class="btn primary wide">＋ Добавить чат</button>
-    <button id="clearAllChatsBtn" class="btn danger wide" title="Удалить все чаты и их истории безвозвратно">🧹 Очистить все чаты</button>
+    <div class="pane-heading"><span class="eyebrow">Сессии</span><strong>Активные диалоги</strong></div>
+    <button id="addChatBtn" class="btn primary wide"><span>＋</span> Новый чат</button>
     <div id="chatList"></div>
-    <div class="pane-note">Один чат = один пользователь.<br>Не смешивайте разных юзеров в одном чате!</div>
+    <div class="chat-pane-footer">
+      <div class="pane-note">Один диалог — один пользователь. История сохраняется автоматически.</div>
+      <button id="clearAllChatsBtn" class="btn danger subtle-danger wide" title="Удалить все чаты и их истории безвозвратно">Очистить список</button>
+    </div>
   </aside>
 
   <section id="chatWorkArea">
     <div id="noChatPlaceholder">
-      <div class="big-emoji">💬</div>
-      <h2>Чатов пока нет</h2>
-      <p>Нажмите «＋ Добавить чат», вставьте историю переписки с пользователем<br>и получите готовый ответ, который затащит его в приват.</p>
+      <div class="empty-orbit"><span>✦</span></div>
+      <span class="eyebrow">AI response studio</span>
+      <h2>Начните с нового диалога</h2>
+      <p>Создайте отдельную сессию, вставьте историю переписки — ассистент предложит стратегию и готовые ответы.</p>
+      <button class="btn primary empty-add" type="button">Создать первый чат</button>
     </div>
 
     <div id="chatSession" class="hidden">
       <div id="sessionHeader">
-        <input id="chatTitle" title="Название чата (имя пользователя)">
-        <button id="deleteChatBtn" class="btn danger small">🗑 Удалить чат</button>
+        <div class="session-identity"><span class="eyebrow">Текущая сессия</span><input id="chatTitle" title="Название чата (имя пользователя)"></div>
+        <button id="deleteChatBtn" class="btn danger small">Удалить</button>
       </div>
 
       <div class="card">
@@ -56,8 +68,9 @@
         <textarea id="historyInput" spellcheck="false"
           placeholder="Пример:&#10;user: hey beautiful, how are you?&#10;model: hii im great honey, u seem fun ^^&#10;user: you look amazing... what are you into?"></textarea>
         <!-- F-09: предупреждение об обработке PII сторонним сервисом -->
-        <p class="hint">🔒 Приватность: история переписки отправляется во внешний API (DeepSeek) для обработки,
-           хранится локально не дольше 30 дней и удаляется кнопкой «Очистить все чаты».</p>
+        <p class="hint">🔒 Приватность: история отправляется во внешний API (DeepSeek) для обработки.
+           Рабочая копия хранится локально до 30 дней и удаляется кнопкой «Очистить все чаты».
+           Если чат отдельно сохранён в опыт, его копия удаляется только на вкладке «Опыт».</p>
         <div class="controls-row">
           <select id="strategySel" title="Стратегия работы с пользователем">
             <option value="auto">🧠 Авто — ассистент решает сам</option>
@@ -116,13 +129,13 @@
 
 <!-- ===================== МУЗЫКА ===================== -->
 <section id="tab-music" class="tab-page hidden">
-  <p class="page-desc">🎵 Англоязычная музыка для стрима. «🌐 Открыть» — трек запустится в системном браузере, «▶» — встроенный мини-плеер прямо здесь. Ссылки можно заменить — они сохраняются автоматически.</p>
+  <header class="page-intro"><span class="eyebrow">Stream soundtrack</span><h1>Музыкальная панель</h1><p class="page-desc">Соберите рабочий плейлист для эфира. Открывайте треки во внешнем браузере или запускайте во встроенном мини-плеере — ссылки сохраняются автоматически.</p></header>
   <div id="musicGrid"></div>
 </section>
 
 <!-- ===================== ТИП-МЕНЮ ===================== -->
 <section id="tab-tipmenu" class="tab-page hidden">
-  <p class="page-desc">💎 Все заготовки тип-меню по категориям. Кнопка «copy» кладёт пункт в буфер обмена — вставляй прямо в чат площадки.</p>
+  <header class="page-intro"><span class="eyebrow">Quick library</span><h1>Тип-меню</h1><p class="page-desc">Готовые формулировки по категориям. Найдите нужный пункт и отправьте его в буфер обмена одним кликом.</p></header>
   <input id="tmSearch" placeholder="🔍 Поиск по пунктам меню...">
   <div id="tmCats" class="pill-row"></div>
   <div id="tmGrid"></div>
@@ -130,7 +143,7 @@
 
 <!-- ===================== ГЕНЕРАТОР ЦЕЛЕЙ ===================== -->
 <section id="tab-goalsgen" class="tab-page hidden">
-  <p class="page-desc">🎲 Выбери хештег — получишь готовые цели по теме. Мало? «✨ Сгенерировать ещё (AI)» придумает свежие в том же стиле. Отмечай ⭐ — соберётся личный сет на стрим.</p>
+  <header class="page-intro"><span class="eyebrow">Goal workshop</span><h1>Генератор целей</h1><p class="page-desc">Выберите тему, соберите готовый набор или создайте новые варианты через AI. Избранные цели формируют персональный сет для стрима.</p></header>
   <div id="ggTags" class="pill-row"></div>
   <div class="row-gap" style="margin-bottom: 12px">
     <button id="ggGenerateBtn" class="btn primary">✨ Сгенерировать ещё (AI)</button>
@@ -147,7 +160,11 @@
 
 <!-- ===================== ОПЫТ (аналитика) ===================== -->
 <section id="tab-experience" class="tab-page hidden">
-  <p class="page-desc">📈 Обучение в цифрах: чем больше чатов ты сохраняешь и размечаешь исходами, тем точнее работает ассистент. Статистика обновляется при каждом открытии вкладки.</p>
+  <header class="page-intro"><span class="eyebrow">Performance intelligence</span><h1>Опыт и аналитика</h1><p class="page-desc">Сохранённые и размеченные диалоги улучшают подсказки ассистента. Здесь собраны конверсия, стратегии, темы и динамика результатов.</p></header>
+  <div class="row-gap exp-actions">
+    <button id="clearExperienceBtn" class="btn danger">🧹 Очистить базу опыта</button>
+    <span id="clearExperienceStatus" class="hint">Локальные рабочие чаты останутся без изменений.</span>
+  </div>
   <div id="expKpis" class="kpi-grid"></div>
 
   <div class="card">
@@ -169,6 +186,7 @@
 <!-- ===================== НАСТРОЙКИ ===================== -->
 <section id="tab-settings" class="tab-page hidden">
   <div class="settings-wrap">
+    <header class="page-intro"><span class="eyebrow">Workspace setup</span><h1>Настройки</h1><p class="page-desc">Подключите DeepSeek и опишите профиль модели. Ключ скрыт после сохранения и не возвращается в интерфейс.</p></header>
 
     <div class="card">
       <div class="card-head"><h3>🔑 DeepSeek API</h3></div>
@@ -220,9 +238,11 @@
 
 <!-- Модалка при добавлении чата -->
 <div id="modalOverlay" class="hidden">
-  <div id="modal">
-    <h3>⚠️ Важно!</h3>
-    <p>Для каждого пользователя создавайте отдельные чаты,<br>иначе могут быть проблемы и ассистент будет выдавать некорректные ответы.</p>
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-icon">✦</div>
+    <span class="eyebrow">Новая сессия</span>
+    <h3 id="modalTitle">Один пользователь — один чат</h3>
+    <p>Так контекст останется чистым, а рекомендации и ответы ассистента будут точнее.</p>
     <div class="modal-btns">
       <button id="modalBackBtn" class="btn ghost">← Назад</button>
       <button id="modalOkBtn" class="btn primary">Понятно</button>
@@ -239,4 +259,3 @@
 <script src="app.js"></script>
 </body>
 </html>
-

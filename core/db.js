@@ -3,7 +3,7 @@
  * Хранит диалоги оператора и их исходы; позже успешные кейсы пойдут
  * примерами в промпт, а статистика конверсий — в динамические подсказки.
  *
- * Движки: better-sqlite3 (основной) -> JSON-файл (авто-fallback;
+ * Движки: встроенный node:sqlite (основной) -> JSON-файл (явный fallback;
  * принудительно: EXP_DB_ENGINE=json).
  * Путь: $EXPERIENCE_DB_PATH || %APPDATA%/operator-helper/experience.db
  * (вне папки проекта — по той же причине, что и конфиг, F-04).
@@ -24,6 +24,18 @@ function appDataDir() {
 
 const DB_PATH = process.env.EXPERIENCE_DB_PATH || path.join(appDataDir(), 'experience.db');
 const FORCE_JSON = String(process.env.EXP_DB_ENGINE || '').toLowerCase() === 'json';
+const ALLOW_JSON_FALLBACK = String(process.env.ALLOW_JSON_FALLBACK || '') === '1';
+const VALID_RESULTS = new Set(['won_private', 'won_tip', 'lost', 'open']);
+
+function validateOutcome(chatId, result, revenue) {
+  const id = Number(chatId);
+  const amount = Number(revenue || 0);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Некорректный chatId');
+  if (!VALID_RESULTS.has(result)) throw new Error('Недопустимый исход чата');
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1e9)
+    throw new Error('Некорректное значение дохода');
+  return { chatId: id, result, revenue: amount };
+}
 
 /* ---------------- Разбор вставленной истории на сообщения ---------------- */
 const RE_USER = /^(user|юзер|user:|юзер:)\s*[:：]?\s*/i;
@@ -46,12 +58,14 @@ function parseHistory(raw) {
   return msgs;
 }
 
-/* ---------------- Движок SQLite (better-sqlite3) ---------------- */
+/* ---------------- Движок SQLite (встроенный node:sqlite, Node 22.5+) ---------------- */
 function initSqlite() {
-  const Database = require('better-sqlite3'); // может отсутствовать — ловим выше
+  const { DatabaseSync } = require('node:sqlite');
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const db = new Database(DB_PATH);
-  db.pragma('journal_mode = WAL');
+  const db = new DatabaseSync(DB_PATH);
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec(`
     CREATE TABLE IF NOT EXISTS chats(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,6 +90,19 @@ function initSqlite() {
       marked_at TEXT DEFAULT (datetime('now'))
     );
   `);
+  db.exec('PRAGMA user_version = 1');
+
+  function transaction(fn) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn();
+      db.exec('COMMIT');
+      return result;
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch { /* исходная ошибка важнее */ }
+      throw e;
+    }
+  }
 
   return {
     name: 'sqlite',
@@ -85,22 +112,28 @@ function initSqlite() {
         'INSERT INTO chats(platform, status, strategy, msg_count) VALUES(?, ?, ?, ?)');
       const insMsg = db.prepare(
         'INSERT INTO messages(chat_id, role, text) VALUES(?, ?, ?)');
-      const chatId = db.transaction(() => {
+      const chatId = transaction(() => {
         const id = insChat.run(platform || '', 'open', strategy || '', msgs.length).lastInsertRowid;
         for (const m of msgs) insMsg.run(id, m.role, m.text);
         return id;
-      })();
+      });
       return { chatId: Number(chatId), msgCount: msgs.length };
     },
     markOutcome(chatId, result, revenue) {
-      const info = db.prepare(`
-        INSERT INTO outcomes(chat_id, result, revenue) VALUES(?, ?, ?)
-        ON CONFLICT(chat_id) DO UPDATE SET
-          result = excluded.result, revenue = excluded.revenue,
-          marked_at = datetime('now')`).run(chatId, result, revenue || 0);
-      db.prepare("UPDATE chats SET status = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(result, chatId);
-      return { ok: true, changed: info.changes > 0 };
+      const value = validateOutcome(chatId, result, revenue);
+      if (!db.prepare('SELECT 1 FROM chats WHERE id = ?').get(value.chatId))
+        throw new Error('Чат не найден');
+      const changed = transaction(() => {
+        const info = db.prepare(`
+          INSERT INTO outcomes(chat_id, result, revenue) VALUES(?, ?, ?)
+          ON CONFLICT(chat_id) DO UPDATE SET
+            result = excluded.result, revenue = excluded.revenue,
+            marked_at = datetime('now')`).run(value.chatId, value.result, value.revenue);
+        db.prepare("UPDATE chats SET status = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(value.result, value.chatId);
+        return info.changes > 0;
+      });
+      return { ok: true, changed };
     },
     getSuccessfulMessages(limitChats) {
       const chats = db.prepare(`
@@ -140,6 +173,16 @@ function initSqlite() {
         engine: 'sqlite', total, byStatus, byStrategy,
         conversion: marked ? Math.round(won / marked * 1000) / 10 : 0
       };
+    },
+    clearAll() {
+      const deleted = db.prepare('SELECT COUNT(*) AS n FROM chats').get().n;
+      transaction(() => {
+        db.prepare('DELETE FROM outcomes').run();
+        db.prepare('DELETE FROM messages').run();
+        db.prepare('DELETE FROM chats').run();
+        db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('chats','messages')").run();
+      });
+      return { ok: true, deleted };
     }
   };
 }
@@ -149,9 +192,24 @@ function initJson(jsonPath) {
   const JSON_PATH = jsonPath || (DB_PATH + '.json');
   fs.mkdirSync(path.dirname(JSON_PATH), { recursive: true });
   const state = { seq: 0, chats: [], messages: [], outcomes: [] };
-  try { Object.assign(state, JSON.parse(fs.readFileSync(JSON_PATH, 'utf-8'))); }
-  catch { /* новый файл */ }
-  const persist = () => fs.writeFileSync(JSON_PATH, JSON.stringify(state), 'utf-8');
+  try {
+    const saved = JSON.parse(fs.readFileSync(JSON_PATH, 'utf-8'));
+    if (!saved || !Array.isArray(saved.chats) || !Array.isArray(saved.messages) ||
+        !Array.isArray(saved.outcomes)) {
+      throw new Error('неверная структура JSON-базы');
+    }
+    state.seq = Number.isSafeInteger(saved.seq) && saved.seq >= 0 ? saved.seq : 0;
+    state.chats = saved.chats;
+    state.messages = saved.messages;
+    state.outcomes = saved.outcomes;
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw new Error(`Не удалось прочитать JSON-базу ${JSON_PATH}: ${e.message}`);
+  }
+  const persist = () => {
+    const tempPath = `${JSON_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(state), 'utf-8');
+    fs.renameSync(tempPath, JSON_PATH);
+  };
 
   return {
     name: 'json',
@@ -169,15 +227,18 @@ function initJson(jsonPath) {
       return { chatId: id, msgCount: msgs.length };
     },
     markOutcome(chatId, result, revenue) {
-      chatId = Number(chatId);
+      const valid = validateOutcome(chatId, result, revenue);
+      chatId = valid.chatId;
+      const chat = state.chats.find((c) => c.id === chatId);
+      if (!chat) throw new Error('Чат не найден');
       let o = state.outcomes.find((x) => x.chat_id === chatId);
       if (!o) { o = { chat_id: chatId }; state.outcomes.push(o); }
-      o.result = result; o.revenue = revenue || 0;
+      o.result = valid.result; o.revenue = valid.revenue;
       o.marked_at = new Date().toISOString();
-      const chat = state.chats.find((c) => c.id === chatId);
-      if (chat) { chat.status = result; chat.updated_at = new Date().toISOString(); }
+      chat.status = valid.result;
+      chat.updated_at = new Date().toISOString();
       persist();
-      return { ok: true, changed: !!chat };
+      return { ok: true, changed: true };
     },
     getSuccessfulMessages(limitChats) {
       const wonIds = new Set(state.outcomes
@@ -232,6 +293,15 @@ function initJson(jsonPath) {
         byStrategy: Object.values(strat).sort((a, b) => b.total - a.total),
         conversion: marked ? Math.round(won / marked * 1000) / 10 : 0
       };
+    },
+    clearAll() {
+      const deleted = state.chats.length;
+      state.seq = 0;
+      state.chats = [];
+      state.messages = [];
+      state.outcomes = [];
+      persist();
+      return { ok: true, deleted };
     }
   };
 }
@@ -380,21 +450,18 @@ function getAnalyticsImpl(implObj) {
 let impl = null;
 function init() {
   if (impl) return impl;
-  if (!FORCE_JSON) {
-    try { impl = initSqlite(); }
-    catch (e) {
-      console.warn('[db] better-sqlite3 недоступен, включаю JSON-хранилище:', e.message);
-    }
-  }
-  if (!impl) {
-    try { impl = initJson(); }
-    catch (e) {
-      /* Путь недоступен (напр., EXPERIENCE_DB_PATH=/data без примонтированного
-         тома на Railway) — последнее средство: временный файл ОС,
-         чтобы сохранение чатов никогда не падало. */
-      const tmpPath = path.join(os.tmpdir(), 'operator-helper-experience.json');
-      console.warn('[db] путь недоступен (' + e.message + '), использую временный:', tmpPath);
-      impl = initJson(tmpPath);
+  if (FORCE_JSON) {
+    impl = initJson();
+  } else {
+    try {
+      impl = initSqlite();
+    } catch (e) {
+      if (!ALLOW_JSON_FALLBACK) {
+        throw new Error(`SQLite недоступен: ${e.message}. ` +
+          'Исправьте путь/модуль или явно задайте ALLOW_JSON_FALLBACK=1.');
+      }
+      console.warn('[db] SQLite недоступен, разрешённый JSON fallback:', e.message);
+      impl = initJson();
     }
   }
   console.log(`[db] опыт: движок=${impl.name}, файл=${
@@ -408,8 +475,8 @@ module.exports = {
   engineName: () => init().name,
   saveChat: (p) => init().saveChat(p || {}),
   markOutcome: (chatId, result, revenue) => init().markOutcome(chatId, result, revenue),
+  clearAll: () => init().clearAll(),
   getStats: () => init().getStats(),
   getAnalytics: () => getAnalyticsImpl(init()),
   getExperienceContext: (p) => getExperienceContextImpl(init(), p || {})
 };
-

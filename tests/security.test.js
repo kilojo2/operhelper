@@ -67,7 +67,8 @@ async function waitServer(port, tries) {
   const child = spawn(process.execPath, ['web/server.js'], {
     cwd: path.join(__dirname, '..'),
     env: Object.assign({}, process.env, {
-      PORT: String(port), HOST: '127.0.0.1', CONFIG_PATH: cfgPath
+      PORT: String(port), HOST: '127.0.0.1', CONFIG_PATH: cfgPath,
+      ADMIN_TOKEN: 'admin-test-token'
     }),
     stdio: ['ignore', 'ignore', 'pipe']
   });
@@ -105,7 +106,13 @@ async function waitServer(port, tries) {
 
     /* ---- F-02: CSRF через text/plain (PoC из аудита) ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'text/plain' },
+      { 'Content-Type': 'application/json' }, '{}');
+    body = JSON.parse(r.body);
+    ok(r.status === 403 && body.needAdminToken === true,
+      'административный API отклоняет обычного пользователя без admin-токена');
+
+    r = await rawReq(port, 'POST', '/api/config',
+      { 'Content-Type': 'text/plain', 'X-Admin-Token': 'admin-test-token' },
       '{"apiKey":"sk-HACKED","profile":{"name":"AUDIT_CSRF_PROOF"}}');
     ok(r.status === 415, 'F-02: POST text/plain -> 415, получено ' + r.status);
 
@@ -116,7 +123,7 @@ async function waitServer(port, tries) {
 
     /* ---- F-01: пустой ключ при сохранении = «не менять» ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'application/json' },
+      { 'Content-Type': 'application/json', 'X-Admin-Token': 'admin-test-token' },
       JSON.stringify({ apiKey: '', profile: { name: 'Renamed' } }));
     body = JSON.parse(r.body);
     ok(r.status === 200 && body.ok === true && body.hasKey === true,
@@ -127,7 +134,7 @@ async function waitServer(port, tries) {
 
     /* ---- новый ключ сохраняется ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'application/json' }, JSON.stringify({ apiKey: 'sk-NEWKEY9999' }));
+      { 'Content-Type': 'application/json', 'X-Admin-Token': 'admin-test-token' }, JSON.stringify({ apiKey: 'sk-NEWKEY9999' }));
     saved = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
     ok(saved.apiKey === 'sk-NEWKEY9999', 'новый ключ записывается в конфиг');
 
@@ -140,6 +147,25 @@ async function waitServer(port, tries) {
       JSON.stringify({ apiKey: 'sk-ATTACKER', messages: [{ role: 'user', content: 'hi' }] }));
     ok(!r.body.includes('sk-ATTACKER'),
       'chat: подменный ключ из тела игнорируется (используется серверный)');
+
+    /* ---- тело выше лимита получает HTTP 413, а не сброс соединения ---- */
+    const huge = JSON.stringify({ profile: { name: 'x'.repeat(530 * 1024) } });
+    r = await rawReq(port, 'POST', '/api/config', {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(huge),
+      'X-Admin-Token': 'admin-test-token'
+    }, huge);
+    ok(r.status === 413, 'слишком большое тело -> стабильный HTTP 413');
+
+    /* ---- X-Forwarded-For не доверяется без TRUST_PROXY=1 ---- */
+    let spoofGot429 = false;
+    for (let i = 0; i < 25; i++) {
+      const rr = await rawReq(port, 'POST', '/api/chat', {
+        'Content-Type': 'application/json', 'X-Forwarded-For': `198.51.100.${i}`
+      }, JSON.stringify({ messages: 'oops' }));
+      if (rr.status === 429) { spoofGot429 = true; break; }
+    }
+    ok(spoofGot429, 'F-03: подмена X-Forwarded-For не обходит rate-limit');
 
     /* ---- F-03: rate-limit (дефолтный бакет 60/мин на /api/data) ---- */
     let got429 = false;
@@ -158,5 +184,4 @@ async function waitServer(port, tries) {
   console.log(failed ? ('\nИТОГ: ПРОВАЛЕНО ' + failed) : '\nИТОГ: ВСЕ ТЕСТЫ ПРОШЛИ');
   process.exit(failed ? 1 : 0);
 })();
-
 
