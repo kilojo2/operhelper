@@ -34,7 +34,8 @@ const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
    протоколом и слэшем — «https://abc.up.railway.app/» тоже сработает:
    ALLOWED_HOSTS=my-app.up.railway.app */
 const EXTRA_HOSTS = new Set(
-  [process.env.ALLOWED_HOSTS, process.env.RAILWAY_PUBLIC_DOMAIN, process.env.RAILWAY_STATIC_URL]
+  [process.env.ALLOWED_HOSTS, process.env.RENDER_EXTERNAL_HOSTNAME,
+    process.env.RAILWAY_PUBLIC_DOMAIN, process.env.RAILWAY_STATIC_URL]
     .filter(Boolean).join(',')
     .split(',')
     .map((s) => s.trim().toLowerCase()

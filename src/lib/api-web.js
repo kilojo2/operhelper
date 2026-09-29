@@ -43,7 +43,13 @@
       if (admin) headers['X-Admin-Token'] = admin;
     } catch { /* ignore */ }
 
-    const r = await fetch(url, Object.assign({}, opts, { headers }));
+    let r;
+    try {
+      r = await fetch(url, Object.assign({}, opts, { headers }));
+    } catch (e) {
+      const reason = e && e.message ? `: ${e.message}` : '';
+      throw new Error(`Не удалось связаться с сервером${reason}`);
+    }
 
     if (r.status === 401 && !opts.__retriedToken) {
       let body = null;
@@ -70,13 +76,41 @@
     return r;
   }
 
+  async function readApiResponse(r) {
+    const text = await r.text();
+    const status = `HTTP ${r.status || 0}`;
+
+    if (!text.trim()) {
+      const hint = [502, 503, 504].includes(r.status)
+        ? ' Сервер или внешний AI-сервис временно недоступен либо не успел ответить.'
+        : '';
+      throw new Error(`Сервер вернул пустой ответ (${status}).${hint}`);
+    }
+
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      const type = String(r.headers.get('content-type') || '').toLowerCase();
+      const hint = type.includes('text/html')
+        ? ' Вместо API ответила служебная страница хостинга.'
+        : '';
+      throw new Error(`Сервер вернул некорректный ответ (${status}).${hint}`);
+    }
+
+    if (!r.ok && body && typeof body === 'object' && body.ok === undefined) {
+      body.ok = false;
+    }
+    return body;
+  }
+
   async function post(url, body) {
     const r = await request(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }, // F-02: сервер принимает только application/json
       body: JSON.stringify(body || {})
     });
-    return r.json();
+    return readApiResponse(r);
   }
 
   // Помечаем документ — CSS скроет элементы, недоступные в браузере
@@ -90,10 +124,10 @@
     testKey: (payload) => post('/api/test-key', payload),
 
     // Конфиг БЕЗ ключа: { hasKey, model, temperature, profile } (F-01)
-    loadConfig: () => request('/api/config').then((r) => r.json()),
+    loadConfig: () => request('/api/config').then(readApiResponse),
     saveConfig: (cfg) => post('/api/config', cfg),
 
-    getData: () => request('/api/data').then((r) => r.json()),
+    getData: () => request('/api/data').then(readApiResponse),
 
     // Открыть ссылку в новой вкладке браузера
     openExternal: (url) => {
@@ -106,7 +140,7 @@
     // База опыта (обучение на чатах, Фаза 1)
     expSave: (payload) => post('/api/exp/save', payload),
     expOutcome: (payload) => post('/api/exp/outcome', payload),
-    expStats: () => request('/api/exp/stats').then((r) => r.json()),
+    expStats: () => request('/api/exp/stats').then(readApiResponse),
     expClear: () => post('/api/exp/clear', {}),
 
     // Подбор примеров из опыта (Фаза 2)

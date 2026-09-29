@@ -68,7 +68,8 @@ async function waitServer(port, tries) {
     cwd: path.join(__dirname, '..'),
     env: Object.assign({}, process.env, {
       PORT: String(port), HOST: '127.0.0.1', CONFIG_PATH: cfgPath,
-      ADMIN_TOKEN: 'admin-test-token'
+      ADMIN_TOKEN: 'admin-test-token',
+      RENDER_EXTERNAL_HOSTNAME: 'operator-helper-test.onrender.com'
     }),
     stdio: ['ignore', 'ignore', 'pipe']
   });
@@ -97,6 +98,9 @@ async function waitServer(port, tries) {
 
     r = await rawReq(port, 'GET', '/api/config', { Host: `localhost:${port}` });
     ok(r.status === 200, 'F-02: localhost в Host по-прежнему разрешён');
+
+    r = await rawReq(port, 'GET', '/api/config', { Host: 'operator-helper-test.onrender.com' });
+    ok(r.status === 200, 'Render: RENDER_EXTERNAL_HOSTNAME автоматически добавлен в allowlist');
 
     /* ---- F-11: методы вне allowlist ---- */
     r = await rawReq(port, 'PUT', '/api/config');
@@ -184,4 +188,3 @@ async function waitServer(port, tries) {
   console.log(failed ? ('\nИТОГ: ПРОВАЛЕНО ' + failed) : '\nИТОГ: ВСЕ ТЕСТЫ ПРОШЛИ');
   process.exit(failed ? 1 : 0);
 })();
-
