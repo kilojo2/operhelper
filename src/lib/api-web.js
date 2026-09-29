@@ -14,6 +14,14 @@
 
   const TOKEN_KEY = 'oh_access_token';
   const ADMIN_TOKEN_KEY = 'oh_admin_token';
+  const REMOTE_API_BY_HOST = Object.freeze({
+    'operhelper.killasnazz.workers.dev': 'https://operhelper.onrender.com'
+  });
+  const API_ORIGIN = REMOTE_API_BY_HOST[location.hostname] || '';
+
+  function apiUrl(pathname) {
+    return API_ORIGIN ? new URL(pathname, API_ORIGIN).href : pathname;
+  }
 
   // Токен доступа (нужен только при запуске сервера с HOST=0.0.0.0):
   // берётся из ?token=... или #token=... и кладётся в sessionStorage.
@@ -45,7 +53,7 @@
 
     let r;
     try {
-      r = await fetch(url, Object.assign({}, opts, { headers }));
+      r = await fetch(apiUrl(url), Object.assign({}, opts, { headers }));
     } catch (e) {
       const reason = e && e.message ? `: ${e.message}` : '';
       throw new Error(`Не удалось связаться с сервером${reason}`);

@@ -102,6 +102,23 @@ async function waitServer(port, tries) {
     r = await rawReq(port, 'GET', '/api/config', { Host: 'operator-helper-test.onrender.com' });
     ok(r.status === 200, 'Render: RENDER_EXTERNAL_HOSTNAME автоматически добавлен в allowlist');
 
+    r = await rawReq(port, 'OPTIONS', '/api/chat', {
+      Host: 'operator-helper-test.onrender.com',
+      Origin: 'https://operhelper.killasnazz.workers.dev',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type,x-access-token'
+    });
+    ok(r.status === 204, 'Cloudflare: CORS preflight -> 204');
+    ok(r.headers['access-control-allow-origin'] === 'https://operhelper.killasnazz.workers.dev',
+      'Cloudflare: разрешён только настроенный frontend origin');
+
+    r = await rawReq(port, 'OPTIONS', '/api/chat', {
+      Host: 'operator-helper-test.onrender.com',
+      Origin: 'https://evil.example.com',
+      'Access-Control-Request-Method': 'POST'
+    });
+    ok(r.status === 403, 'Cloudflare: чужой CORS origin отклонён');
+
     /* ---- F-11: методы вне allowlist ---- */
     r = await rawReq(port, 'PUT', '/api/config');
     ok(r.status === 405, 'F-11: PUT -> 405');

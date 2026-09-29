@@ -45,6 +45,16 @@ const EXTRA_HOSTS = new Set(
       .replace(/\.$/, ''))                    // убрать точку на конце
     .filter(Boolean)
 );
+const CORS_ORIGINS = new Set(
+  [process.env.CORS_ORIGINS, 'https://operhelper.killasnazz.workers.dev']
+    .filter(Boolean).join(',')
+    .split(',')
+    .map((value) => {
+      try { return new URL(value.trim()).origin.toLowerCase(); }
+      catch { return ''; }
+    })
+    .filter(Boolean)
+);
 const ROOT = path.resolve(__dirname);                 // web/
 const SRC_DIR = path.resolve(__dirname, '..', 'src'); // общий фронтенд с десктопом
 const DATA_DIR = path.resolve(__dirname, '..', 'data');
@@ -116,6 +126,24 @@ function json(res, code, obj) {
   if (res.headersSent) return;
   res.writeHead(code, API_HEADERS);
   res.end(JSON.stringify(obj));
+}
+function allowedCorsOrigin(req) {
+  const value = String(req.headers.origin || '').trim();
+  if (!value) return '';
+  try {
+    const origin = new URL(value).origin.toLowerCase();
+    return CORS_ORIGINS.has(origin) ? origin : '';
+  } catch { return ''; }
+}
+function applyCors(req, res) {
+  const origin = allowedCorsOrigin(req);
+  if (!origin) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Access-Token, X-Admin-Token');
+  res.setHeader('Access-Control-Max-Age', '600');
+  res.setHeader('Vary', 'Origin');
+  return true;
 }
 function ctype(p) {
   const e = path.extname(p).toLowerCase();
@@ -280,6 +308,7 @@ function originAllowed(req) {
   try {
     const u = new URL(src);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    if (CORS_ORIGINS.has(u.origin.toLowerCase())) return true;
     const name = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     const nameOk = isLocalHostname(name) ||
                    EXTRA_HOSTS.has(name) ||
@@ -538,7 +567,7 @@ async function handleApi(req, res, pathname) {
   return json(res, 404, { error: 'Неизвестный API-маршрут' });
 }
 /* ---------------- HTTP-сервер ---------------- */
-const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST']); // F-11: allowlist методов
+const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'OPTIONS']); // F-11: allowlist методов
 
 const server = http.createServer(async (req, res) => {
   const startedAt = Date.now();
@@ -565,6 +594,12 @@ const server = http.createServer(async (req, res) => {
     if (!hostAllowed(req.headers.host)) return json(res, 403, { error: 'Forbidden host' });
 
     if (pathname.startsWith('/api/')) {
+      const hasCors = applyCors(req, res);
+      if (req.method === 'OPTIONS') {
+        if (!hasCors) return json(res, 403, { error: 'Forbidden origin' });
+        res.writeHead(204);
+        return res.end();
+      }
       // F-02: CSRF — источник браузерного POST должен совпадать с сервером
       if (req.method === 'POST' && !originAllowed(req)) return json(res, 403, { error: 'Forbidden origin' });
       // F-03: троттлинг ДО проверки токена (чтобы не брутфорсили токен)
