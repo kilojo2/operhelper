@@ -9,6 +9,7 @@
     "start": "node web/server.js",
     "app": "electron .",
     "web": "node web/server.js",
+    "deploy:cloudflare": "node tools/deploy-cloudflare.cjs",
     "test": "node --test tests/*.test.js",
     "dist": "electron-builder --win"
   },
