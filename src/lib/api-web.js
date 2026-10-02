@@ -14,6 +14,24 @@
 
   const TOKEN_KEY = 'oh_access_token';
   const ADMIN_TOKEN_KEY = 'oh_admin_token';
+  const LOCAL_CONFIG_KEY = 'oh_web_config_v1';
+
+  function loadLocalConfig() {
+    try {
+      const value = JSON.parse(localStorage.getItem(LOCAL_CONFIG_KEY) || '{}');
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch { return {}; }
+  }
+
+  function saveLocalConfig(config) {
+    const safe = {
+      model: config.model || 'deepseek-chat',
+      temperature: Number.isFinite(Number(config.temperature)) ? Number(config.temperature) : 1.3,
+      profile: config.profile && typeof config.profile === 'object' ? config.profile : {}
+    };
+    try { localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(safe)); }
+    catch { /* private mode / storage disabled */ }
+  }
 
   // Токен доступа (нужен только при запуске сервера с HOST=0.0.0.0):
   // берётся из ?token=... или #token=... и кладётся в sessionStorage.
@@ -124,8 +142,16 @@
     testKey: (payload) => post('/api/test-key', payload),
 
     // Конфиг БЕЗ ключа: { hasKey, model, temperature, profile } (F-01)
-    loadConfig: () => request('/api/config').then(readApiResponse),
-    saveConfig: (cfg) => post('/api/config', cfg),
+    loadConfig: async () => {
+      const server = await request('/api/config').then(readApiResponse);
+      const local = loadLocalConfig();
+      return Object.assign({}, server, local, { hasKey: !!server.hasKey });
+    },
+    saveConfig: async (cfg) => {
+      const result = await post('/api/config', cfg);
+      if (!result || result.ok !== false) saveLocalConfig(cfg || {});
+      return result;
+    },
 
     getData: () => request('/api/data').then(readApiResponse),
 

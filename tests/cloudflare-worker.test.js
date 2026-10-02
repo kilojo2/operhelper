@@ -1,45 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
 
-test('Cloudflare Worker proxies API and serves static assets', async () => {
-  const moduleUrl = pathToFileURL(path.join(__dirname, '..', 'cloudflare', 'worker.mjs')).href;
-  const worker = (await import(moduleUrl)).default;
-  const originalFetch = global.fetch;
-  let upstreamRequest = null;
-  let assetRequested = false;
+test('Cloudflare Worker is standalone and routes API before assets', () => {
+  const root = path.join(__dirname, '..');
+  const worker = fs.readFileSync(path.join(root, 'cloudflare', 'worker.mjs'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8'));
 
-  try {
-    global.fetch = async (input, init) => {
-      upstreamRequest = { input: String(input), init };
-      return Response.json({ ok: true });
-    };
-    const env = {
-      ASSETS: {
-        fetch: async () => {
-          assetRequested = true;
-          return new Response('asset');
-        }
-      }
-    };
-
-    const apiResponse = await worker.fetch(new Request(
-      'https://operhelper.killasnazz.workers.dev/api/config?x=1',
-      { headers: { 'X-Access-Token': 'test-token' } }
-    ), env);
-    assert.equal(apiResponse.status, 200);
-    assert.equal(upstreamRequest.input, 'https://operhelper.onrender.com/api/config?x=1');
-    assert.equal(upstreamRequest.init.headers.get('X-Access-Token'), 'test-token');
-    assert.equal(upstreamRequest.init.headers.get('Origin'),
-      'https://operhelper.killasnazz.workers.dev');
-
-    const assetResponse = await worker.fetch(new Request(
-      'https://operhelper.killasnazz.workers.dev/styles.css'
-    ), env);
-    assert.equal(await assetResponse.text(), 'asset');
-    assert.equal(assetRequested, true);
-  } finally {
-    global.fetch = originalFetch;
-  }
+  assert.match(worker, /env\.DEEPSEEK_API_KEY/);
+  assert.match(worker, /env\.ACCESS_TOKEN/);
+  assert.doesNotMatch(worker, /onrender\.com/);
+  assert.equal(config.main, './cloudflare/worker.mjs');
+  assert.equal(config.assets.directory, './src');
+  assert.deepEqual(config.assets.run_worker_first, ['/api/*']);
 });
