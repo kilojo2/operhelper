@@ -12,6 +12,9 @@ test('Cloudflare Worker is standalone and routes API before assets', () => {
   assert.match(worker, /env\.ACCESS_TOKEN/);
   assert.doesNotMatch(worker, /onrender\.com/);
   assert.equal(config.main, './cloudflare/worker.mjs');
+  assert.equal(config.keep_vars, true);
+  assert.deepEqual(config.secrets.required,
+    ['ACCESS_TOKEN', 'ADMIN_TOKEN', 'DEEPSEEK_API_KEY']);
   assert.equal(config.assets.directory, './src');
   assert.deepEqual(config.assets.run_worker_first, ['/api/*']);
 });
