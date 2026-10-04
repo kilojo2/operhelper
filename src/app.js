@@ -250,16 +250,10 @@
   }
 
   /* ---------- Музыка ---------- */
-  const MUSIC_KEY = 'oh_music_v1';
-
   function loadMusic() {
-    try {
-      const arr = JSON.parse(localStorage.getItem(MUSIC_KEY));
-      if (Array.isArray(arr) && arr.length === 10) return arr;
-    } catch { /* ignore */ }
-    return new Array(10).fill('');
+    return window.MusicPresets.load(localStorage);
   }
-  function saveMusic(arr) { localStorage.setItem(MUSIC_KEY, JSON.stringify(arr)); }
+  function saveMusic(arr) { window.MusicPresets.save(localStorage, arr); }
 
   function ytId(url) {
     try {
@@ -294,7 +288,7 @@
 
       const input = card.querySelector('.m-url');
       input.value = url || '';
-      input.addEventListener('change', () => { list[i] = input.value.trim(); saveMusic(list); });
+      input.addEventListener('input', () => { list[i] = input.value.trim(); saveMusic(list); });
 
       card.querySelector('.m-open').addEventListener('click', () => {
         const u = input.value.trim();
