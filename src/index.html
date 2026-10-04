@@ -10,18 +10,46 @@
 </head>
 <body>
 
+<svg class="icon-sprite" aria-hidden="true" focusable="false">
+  <symbol id="nav-chat" viewBox="0 0 24 24">
+    <path d="M20 11.5a8 8 0 0 1-8.5 8 9.4 9.4 0 0 1-3.7-.8L4 20l1.3-3.5A8 8 0 1 1 20 11.5Z"/>
+    <path d="M8 10h8M8 14h5"/>
+  </symbol>
+  <symbol id="nav-headphones" viewBox="0 0 24 24">
+    <path d="M4 14v-2a8 8 0 0 1 16 0v2"/>
+    <path d="M4 14a2 2 0 0 1 2-2h1v7H6a2 2 0 0 1-2-2v-3ZM20 14a2 2 0 0 0-2-2h-1v7h1a2 2 0 0 0 2-2v-3Z"/>
+  </symbol>
+  <symbol id="nav-list" viewBox="0 0 24 24">
+    <path d="M9 5h10M9 12h10M9 19h10"/>
+    <path d="M4.5 5h.01M4.5 12h.01M4.5 19h.01"/>
+  </symbol>
+  <symbol id="nav-wand" viewBox="0 0 24 24">
+    <path d="m15 4 5 5L8.5 20.5a2.1 2.1 0 0 1-3-3L17 6"/>
+    <path d="m13 8 3 3M5 3v4M3 5h4M19 15v4M17 17h4"/>
+  </symbol>
+  <symbol id="nav-chart" viewBox="0 0 24 24">
+    <path d="M4 19V5M4 19h16"/>
+    <path d="m7 15 4-4 3 2 5-6"/>
+    <path d="M16 7h3v3"/>
+  </symbol>
+  <symbol id="nav-sliders" viewBox="0 0 24 24">
+    <path d="M4 6h6M14 6h6M4 12h10M18 12h2M4 18h2M10 18h10"/>
+    <circle cx="12" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>
+  </symbol>
+</svg>
+
 <header id="titlebar">
   <div class="brand">
     <div class="brand-mark">OH</div>
     <div class="brand-copy"><b>Operator Helper</b><span>stream operations</span></div>
   </div>
   <nav id="tabs">
-    <button class="tab active" data-tab="assistant" aria-current="page"><span class="tab-icon">✦</span><span class="tab-label">Ассистент</span></button>
-    <button class="tab" data-tab="music"><span class="tab-icon">♪</span><span class="tab-label">Музыка</span></button>
-    <button class="tab" data-tab="tipmenu"><span class="tab-icon">◇</span><span class="tab-label">Тип-меню</span></button>
-    <button class="tab" data-tab="goalsgen"><span class="tab-icon">⌁</span><span class="tab-label">Генератор</span></button>
-    <button class="tab" data-tab="experience"><span class="tab-icon">↗</span><span class="tab-label">Опыт</span></button>
-    <button class="tab" data-tab="settings"><span class="tab-icon">⚙</span><span class="tab-label">Настройки</span></button>
+    <button class="tab active" data-tab="assistant" aria-current="page"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-chat"></use></svg></span><span class="tab-label">Ассистент</span></button>
+    <button class="tab" data-tab="music"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-headphones"></use></svg></span><span class="tab-label">Музыка</span></button>
+    <button class="tab" data-tab="tipmenu"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-list"></use></svg></span><span class="tab-label">Тип-меню</span></button>
+    <button class="tab" data-tab="goalsgen"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-wand"></use></svg></span><span class="tab-label">Генератор</span></button>
+    <button class="tab" data-tab="experience"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-chart"></use></svg></span><span class="tab-label">Опыт</span></button>
+    <button class="tab" data-tab="settings"><span class="tab-icon" aria-hidden="true"><svg><use href="#nav-sliders"></use></svg></span><span class="tab-label">Настройки</span></button>
   </nav>
   <div class="rail-footer">
     <div class="system-state"><i></i><span>Система готова</span></div>
