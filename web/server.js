@@ -312,7 +312,7 @@ function resolveApiKey(provided) {
          (loadConfig().apiKey || '');
 }
 
-async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens }) {
+async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens, responseFormat }) {
   if (!apiKey || !String(apiKey).trim()) {
     throw new Error('API-ключ не задан. Откройте вкладку «Настройки» и впишите ключ DeepSeek.');
   }
@@ -324,6 +324,7 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
     stream: false
   };
   body.max_tokens = Math.min(4096, Math.max(1, Number(maxTokens) || 1800));
+  if (responseFormat === 'json_object') body.response_format = { type: 'json_object' };
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
@@ -348,7 +349,12 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
   if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
     throw new Error('Пустой ответ от DeepSeek.');
   }
-  return data.choices[0].message.content;
+  if (data.choices[0].finish_reason === 'length') {
+    throw new Error('DeepSeek обрезал ответ по лимиту. Попробуйте ещё раз.');
+  }
+  const content = data.choices[0].message.content;
+  if (!content || !String(content).trim()) throw new Error('DeepSeek вернул пустой ответ.');
+  return content;
 }
 
 /* ---------------- Публичный конфиг и валидация ввода (F-01) ---------------- */
@@ -435,7 +441,8 @@ async function handleApi(req, res, pathname) {
     try {
       const content = await callDeepSeek({
         apiKey: resolveApiKey(), // F-01/F-02: только серверный ключ (config или env), body.apiKey игнорируется
-        model: body.model, temperature: body.temperature, messages: msgs
+        model: body.model, temperature: body.temperature, messages: msgs,
+        maxTokens: body.maxTokens, responseFormat: body.responseFormat
       });
       return json(res, 200, { ok: true, content });
     } catch (e) {

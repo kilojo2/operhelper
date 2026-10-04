@@ -78,7 +78,7 @@ function saveConfig(incoming) {
 }
 
 /* ---------------- DeepSeek API ---------------- */
-async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens }) {
+async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens, responseFormat }) {
   if (!apiKey || !String(apiKey).trim()) {
     throw new Error('API-ключ не задан. Откройте вкладку «Настройки» и впишите ключ DeepSeek.');
   }
@@ -101,6 +101,7 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
     max_tokens: safeMaxTokens,
     stream: false
   };
+  if (responseFormat === 'json_object') body.response_format = { type: 'json_object' };
 
   let res;
   const controller = new AbortController();
@@ -131,7 +132,12 @@ async function callDeepSeek({ apiKey, model, temperature, messages, maxTokens })
   if (!data || !data.choices || !data.choices[0] || !data.choices[0].message) {
     throw new Error('Пустой ответ от DeepSeek.');
   }
-  return data.choices[0].message.content;
+  if (data.choices[0].finish_reason === 'length') {
+    throw new Error('DeepSeek обрезал ответ по лимиту. Попробуйте ещё раз.');
+  }
+  const content = data.choices[0].message.content;
+  if (!content || !String(content).trim()) throw new Error('DeepSeek вернул пустой ответ.');
+  return content;
 }
 
 /* ---------------- Данные (заготовки) ---------------- */

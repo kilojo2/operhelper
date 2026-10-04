@@ -470,34 +470,76 @@
       }));
   }
 
+  const GOAL_JSON_SYSTEM = [
+    'Ты — генератор tip-menu goals для совершеннолетней вебкам-модели.',
+    'Верни только валидный JSON-объект без markdown и пояснений.',
+    'Точная схема: {"goals":[{"en":"English goal with 1-2 emoji","ru":"Точный перевод с 1-2 эмодзи"}]}.',
+    'Каждая цель — короткая фраза-действие от лица модели и строго соответствует запрошенной категории.',
+    'В JSON должно быть ровно 10 разных элементов; оба поля в каждом элементе обязательны.'
+  ].join('\n');
+
+  async function requestAiGoalBatch(cfg, retry) {
+    const avoid = ggItems.slice(-30).map((item) => item.en).filter(Boolean);
+    const instruction = [
+      `Категория: #${ggTag}. Сгенерируй 10 новых целей.`,
+      avoid.length ? `Не повторяй эти цели: ${JSON.stringify(avoid)}.` : '',
+      retry ? 'Предыдущий ответ не прошёл проверку. Верни JSON заново и точно по схеме.' : ''
+    ].filter(Boolean).join('\n');
+    const response = await window.api.chat({
+      model: cfg.model || 'deepseek-chat',
+      temperature: retry ? 0.2 : 0.75,
+      maxTokens: 1800,
+      responseFormat: 'json_object',
+      messages: [
+        { role: 'system', content: GOAL_JSON_SYSTEM },
+        { role: 'user', content: instruction }
+      ]
+    });
+    if (!response || !response.ok) {
+      throw new Error(response && response.error ? response.error : 'Ошибка генерации');
+    }
+    return window.AiJson.parseGoalItems(response.content, 10);
+  }
+
   async function generateAiGoals() {
     if (!ggTag) { $('#ggStatus').textContent = '⚠️ Сначала выбери хештег'; return; }
     const btn = $('#ggGenerateBtn');
     btn.disabled = true;
     $('#ggStatus').textContent = '⏳ DeepSeek придумывает свежие цели...';
     try {
+      if (!window.AiJson) throw new Error('Модуль проверки JSON не загрузился');
       const cfg = (window.AppState && AppState.config) || {};
-      const res = await window.api.chat({
-        model: cfg.model || 'deepseek-chat',
-        temperature: 1.4,
-        messages: [
-          { role: 'system', content: 'Ты — генератор целей (tip-menu goals) для вебкам-модели. Отвечай СТРОГО JSON-массивом без пояснений и без markdown: [{"en":"...","ru":"..."}]. en — короткая фраза-действие от лица модели на английском с 1-2 эмодзи; ru — перевод на русский. Стиль фраз: "Show my soles 🦶👀".' },
-          { role: 'user', content: `Категория #${ggTag}: сгенерируй 10 разных целей.` }
-        ]
-      });
-      if (!res.ok) throw new Error(res.error || 'Ошибка генерации');
-      const m = res.content.match(/\[[\s\S]*\]/);
-      const parsed = JSON.parse(m ? m[0] : res.content);
-      const fresh = (Array.isArray(parsed) ? parsed : [])
-        .filter((i) => i && typeof i.en === 'string' && i.en.trim())
-        .slice(0, 10)
-        .map((i) => ({ en: String(i.en).trim(), ru: String(i.ru || '').trim(), ai: true }));
-      if (!fresh.length) throw new Error('Модель вернула пустой список, попробуй ещё раз');
+      let generated = [];
+      let firstError = null;
+      try { generated = await requestAiGoalBatch(cfg, false); }
+      catch (error) { firstError = error; }
+      if (generated.length < 8) {
+        $('#ggStatus').textContent = '⏳ Исправляю формат ответа...';
+        try {
+          const retried = await requestAiGoalBatch(cfg, true);
+          generated = generated.concat(retried);
+        } catch (retryError) {
+          if (!generated.length) throw (retryError || firstError);
+        }
+      }
+
+      const existing = new Set(ggItems.map((item) => String(item.en || '').toLocaleLowerCase('en-US')));
+      const fresh = [];
+      for (const item of generated) {
+        const key = item.en.toLocaleLowerCase('en-US');
+        if (existing.has(key)) continue;
+        existing.add(key);
+        fresh.push({ en: item.en, ru: item.ru, ai: true });
+        if (fresh.length === 10) break;
+      }
+      if (!fresh.length) {
+        throw new Error('ИИ не смог вернуть новые цели в правильном формате. Нажми ещё раз.');
+      }
       ggItems = ggItems.concat(fresh);
       renderGgGrid();
       $('#ggStatus').textContent = `✨ AI добавил целей: ${fresh.length}`;
     } catch (e) {
-      $('#ggStatus').textContent = '❌ ' + e.message;
+      $('#ggStatus').textContent = '❌ ' + (e && e.message ? e.message : 'Не удалось сгенерировать цели');
     } finally {
       btn.disabled = false;
     }

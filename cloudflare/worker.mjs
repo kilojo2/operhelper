@@ -43,6 +43,16 @@ async function callDeepSeek(env, options) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90000);
   let response;
+  const requestBody = {
+    model,
+    temperature,
+    stream: false,
+    max_tokens: Math.min(4096, Math.max(1, Number(options.maxTokens) || 1800)),
+    messages: options.messages
+  };
+  if (options.responseFormat === 'json_object') {
+    requestBody.response_format = { type: 'json_object' };
+  }
   try {
     response = await fetch(DEEPSEEK_URL, {
       method: 'POST',
@@ -51,13 +61,7 @@ async function callDeepSeek(env, options) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${key}`
       },
-      body: JSON.stringify({
-        model,
-        temperature,
-        stream: false,
-        max_tokens: Math.min(4096, Math.max(1, Number(options.maxTokens) || 1800)),
-        messages: options.messages
-      })
+      body: JSON.stringify(requestBody)
     });
   } catch (error) {
     if (error && error.name === 'AbortError') throw new Error('DeepSeek не ответил за 90 секунд.');
@@ -76,6 +80,9 @@ async function callDeepSeek(env, options) {
   }
   const content = data && data.choices && data.choices[0] &&
     data.choices[0].message && data.choices[0].message.content;
+  if (data && data.choices && data.choices[0] && data.choices[0].finish_reason === 'length') {
+    throw new Error('DeepSeek обрезал ответ по лимиту. Попробуйте ещё раз.');
+  }
   if (!content) throw new Error('DeepSeek вернул пустой ответ.');
   return content;
 }
@@ -153,6 +160,8 @@ async function handleApi(request, env, pathname) {
       const content = await callDeepSeek(env, {
         model: body.model,
         temperature: body.temperature,
+        maxTokens: body.maxTokens,
+        responseFormat: body.responseFormat,
         messages
       });
       return json(200, { ok: true, content });
