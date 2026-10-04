@@ -59,7 +59,7 @@
     return {
       id: 'c' + Date.now() + Math.floor(Math.random() * 10000),
       title: 'Чат ' + (chats.length + 1),
-      history: '', strategy: 'auto', lastResult: '',
+      history: '', strategy: 'auto', chatMode: 'auto', lastResult: '',
       expId: null, expResult: '',
       createdAt: Date.now(), updatedAt: Date.now()
     };
@@ -91,6 +91,7 @@
     $('#chatTitle').value = c.title;
     $('#historyInput').value = c.history || '';
     $('#strategySel').value = c.strategy || 'auto';
+    $('#chatModeSel').value = c.chatMode || 'auto';
     if (c.lastResult) renderResult(c.lastResult);
     else $('#resultArea').classList.add('hidden');
     $('#statusLine').textContent = '';
@@ -177,10 +178,17 @@
 
     c.history = hist;
     c.strategy = $('#strategySel').value;
+    c.chatMode = $('#chatModeSel').value;
     touch(c); // F-09: время последней активности для автоочистки
     saveChats();
 
     const cfg = (window.AppState && AppState.config) || {};
+    const adultProfile = Prompts.getAdultProfileState(cfg.profile || {});
+    if (!adultProfile.confirmed) {
+      setStatus('❌ Укажите подтверждённый возраст модели от 18 до 99 лет в настройках', true);
+      if (window.switchTab) window.switchTab('settings');
+      return;
+    }
     // F-01: признак наличия ключа — cfg.hasKey (сам ключ интерфейсу недоступен).
     // В веб-версии ключ может задаваться переменной окружения DEEPSEEK_API_KEY на
     // сервере (cfg.hasKey об этом не знает) — не блокируем, сервер вернёт ошибку сам.
@@ -199,7 +207,14 @@
     let expBlock = '';
     let expCount = 0;
     try {
-      const ctx = await window.api.expExamples({ history: hist, strategy: c.strategy });
+      const stage = Prompts.analyzeConversation(hist, c.chatMode).stage;
+      const ctx = await window.api.expExamples({
+        history: hist,
+        strategy: c.strategy,
+        stage,
+        chatMode: c.chatMode,
+        profileName: String(cfg.profile && cfg.profile.name || '')
+      });
       if (ctx && ctx.ok) {
         expCount = ctx.count || 0;
         expBlock = [ctx.examplesBlock, ctx.statsBlock, ctx.antiBlock]
@@ -208,20 +223,61 @@
     } catch { /* база опыта недоступна — анализ всё равно выполняется */ }
 
     try {
-      const res = await window.api.chat({
+      const systemPrompt = Prompts.buildSystemPrompt(cfg.profile, invitesRawText);
+      const userPrompt = Prompts.buildUserPrompt(hist, c.strategy, expBlock, c.chatMode);
+      const baseMessages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ];
+      const temperature = typeof cfg.temperature === 'number' ? cfg.temperature : 1.3;
+      let res = await window.api.chat({
         model: cfg.model || 'deepseek-chat',
-        temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 1.3,
-        messages: [
-          { role: 'system', content: Prompts.buildSystemPrompt(cfg.profile, invitesRawText) },
-          { role: 'user', content: Prompts.buildUserPrompt(hist, c.strategy, expBlock) }
-        ]
+        temperature,
+        messages: baseMessages
       });
       if (!res.ok) { setStatus('❌ ' + res.error, true); return; }
-      c.lastResult = res.content;
+
+      const conversationState = Prompts.analyzeConversation(hist, c.chatMode);
+      function inspectDraft(content) {
+        const format = Parser.validateAssistantResponse(content);
+        const policy = Prompts.validateReplyPolicy(
+          format.blocks['ОТВЕТ'] || '', conversationState, cfg.profile || {});
+        return {
+          valid: format.valid && policy.valid,
+          issues: format.issues.concat(policy.issues),
+          blocks: format.blocks
+        };
+      }
+
+      let content = res.content;
+      let inspection = inspectDraft(content);
+      if (!inspection.valid) {
+        setStatus('⏳ Проверяю структуру и мягкость ответа, исправляю замечания...');
+        const correction = `Исправь предыдущий черновик. Замечания валидатора: ${inspection.issues.join('; ')}. ` +
+          'Верни все обязательные блоки, сохрани стадию и голос модели, убери давление и недопустимый CTA. Ничего не пиши вне блоков.';
+        res = await window.api.chat({
+          model: cfg.model || 'deepseek-chat',
+          temperature: Math.min(0.8, temperature),
+          messages: baseMessages.concat([
+            { role: 'assistant', content },
+            { role: 'user', content: correction }
+          ])
+        });
+        if (!res.ok) { setStatus('❌ ' + res.error, true); return; }
+        content = res.content;
+        inspection = inspectDraft(content);
+      }
+
+      c.lastResult = content;
       saveChats();
-      renderResult(res.content);
-      setStatus('✅ Готово! Скопируйте «Лучший ответ» и отправьте юзеру.' +
-        (expCount ? ` (опыт: подмешано примеров — ${expCount})` : ''));
+      renderResult(content);
+      if (inspection.valid) {
+        setStatus('✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
+          (expCount ? ` (опыт: подмешано примеров — ${expCount})` : ''));
+      } else {
+        setStatus('⚠️ Ответ создан, но автоматическая проверка нашла: ' +
+          inspection.issues.join('; ') + '. Проверьте текст перед отправкой.', true);
+      }
     } catch (e) {
       setStatus('❌ ' + e.message, true);
     } finally {
@@ -232,7 +288,8 @@
   /* ---------- Библиотека зазывов ---------- */
   function initLibrary(raw) {
     invitesRawText = raw || '';
-    invitesLib = Parser.parseInvites(invitesRawText);
+    invitesLib = Parser.parseInvites(invitesRawText)
+      .filter((item) => Prompts.isSafeInvitePhrase(item.en));
     $('#libCount').textContent = invitesLib.length + ' фраз';
     renderLib('');
   }
@@ -289,7 +346,15 @@
     const btn = $('#expSaveBtn');
     btn.disabled = true;
     try {
-      const res = await window.api.expSave({ history: hist, strategy: c.strategy, platform: '' });
+      const cfg = (window.AppState && AppState.config) || {};
+      const res = await window.api.expSave({
+        history: hist,
+        strategy: c.strategy,
+        chatMode: c.chatMode || 'auto',
+        stage: Prompts.analyzeConversation(hist, c.chatMode).stage,
+        profileName: String(cfg.profile && cfg.profile.name || ''),
+        platform: ''
+      });
       if (!res.ok) throw new Error(res.error || 'Ошибка сохранения');
       c.expId = res.chatId;
       saveChats();
@@ -378,6 +443,10 @@
     $('#strategySel').addEventListener('change', () => {
       const c = getActive();
       if (c) { c.strategy = $('#strategySel').value; touch(c); saveChats(); }
+    });
+    $('#chatModeSel').addEventListener('change', () => {
+      const c = getActive();
+      if (c) { c.chatMode = $('#chatModeSel').value; touch(c); saveChats(); }
     });
     $('#libSearch').addEventListener('input', (e) => renderLib(e.target.value));
 

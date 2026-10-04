@@ -38,8 +38,8 @@ function validateOutcome(chatId, result, revenue) {
 }
 
 /* ---------------- Разбор вставленной истории на сообщения ---------------- */
-const RE_USER = /^(user|юзер|user:|юзер:)\s*[:：]?\s*/i;
-const RE_MODEL = /^(model|модель|мод:|мод)\s*[:：]?\s*/i;
+const RE_USER = /^(?:user|юзер)\s*[:：]\s*/i;
+const RE_MODEL = /^(?:model|модель|мод)\s*[:：]\s*/i;
 
 function parseHistory(raw) {
   const lines = String(raw || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -72,6 +72,9 @@ function initSqlite() {
       platform TEXT DEFAULT '',
       status TEXT DEFAULT 'open',
       strategy TEXT DEFAULT '',
+      stage TEXT DEFAULT '',
+      chat_mode TEXT DEFAULT '',
+      profile_name TEXT DEFAULT '',
       msg_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -90,7 +93,11 @@ function initSqlite() {
       marked_at TEXT DEFAULT (datetime('now'))
     );
   `);
-  db.exec('PRAGMA user_version = 1');
+  const chatColumns = new Set(db.prepare('PRAGMA table_info(chats)').all().map((row) => row.name));
+  if (!chatColumns.has('stage')) db.exec("ALTER TABLE chats ADD COLUMN stage TEXT DEFAULT ''");
+  if (!chatColumns.has('chat_mode')) db.exec("ALTER TABLE chats ADD COLUMN chat_mode TEXT DEFAULT ''");
+  if (!chatColumns.has('profile_name')) db.exec("ALTER TABLE chats ADD COLUMN profile_name TEXT DEFAULT ''");
+  db.exec('PRAGMA user_version = 2');
 
   function transaction(fn) {
     db.exec('BEGIN IMMEDIATE');
@@ -106,14 +113,15 @@ function initSqlite() {
 
   return {
     name: 'sqlite',
-    saveChat({ history, strategy, platform }) {
+    saveChat({ history, strategy, platform, stage, chatMode, profileName }) {
       const msgs = parseHistory(history);
       const insChat = db.prepare(
-        'INSERT INTO chats(platform, status, strategy, msg_count) VALUES(?, ?, ?, ?)');
+        'INSERT INTO chats(platform, status, strategy, stage, chat_mode, profile_name, msg_count) VALUES(?, ?, ?, ?, ?, ?, ?)');
       const insMsg = db.prepare(
         'INSERT INTO messages(chat_id, role, text) VALUES(?, ?, ?)');
       const chatId = transaction(() => {
-        const id = insChat.run(platform || '', 'open', strategy || '', msgs.length).lastInsertRowid;
+        const id = insChat.run(platform || '', 'open', strategy || '', stage || '',
+          chatMode || '', profileName || '', msgs.length).lastInsertRowid;
         for (const m of msgs) insMsg.run(id, m.role, m.text);
         return id;
       });
@@ -137,7 +145,8 @@ function initSqlite() {
     },
     getSuccessfulMessages(limitChats) {
       const chats = db.prepare(`
-        SELECT c.id, c.strategy, c.msg_count, c.updated_at, o.result
+        SELECT c.id, c.strategy, c.stage, c.chat_mode, c.profile_name,
+               c.msg_count, c.updated_at, o.result
         FROM chats c JOIN outcomes o ON o.chat_id = c.id
         WHERE c.status IN ('won_private','won_tip')
         ORDER BY c.updated_at DESC LIMIT ?`).all(limitChats || 300);
@@ -146,14 +155,14 @@ function initSqlite() {
     },
     getLastLost(limitChats) {
       const chats = db.prepare(`
-        SELECT c.id, c.strategy, c.updated_at FROM chats c
+        SELECT c.id, c.strategy, c.stage, c.chat_mode, c.profile_name, c.updated_at FROM chats c
         WHERE c.status = 'lost' ORDER BY c.updated_at DESC LIMIT ?`).all(limitChats || 1);
       const getMsgs = db.prepare('SELECT role, text FROM messages WHERE chat_id = ? ORDER BY id');
       return chats.map((c) => ({ ...c, messages: getMsgs.all(c.id) }));
     },
     getAllChats() {
       return db.prepare(
-        'SELECT id, status, strategy, msg_count, created_at FROM chats ORDER BY id').all();
+        'SELECT id, status, strategy, stage, chat_mode, profile_name, msg_count, created_at FROM chats ORDER BY id').all();
     },
     getRevenueTotal() {
       return db.prepare('SELECT COALESCE(SUM(revenue), 0) AS s FROM outcomes').get().s;
@@ -214,11 +223,12 @@ function initJson(jsonPath) {
   return {
     name: 'json',
     file: JSON_PATH,
-    saveChat({ history, strategy, platform }) {
+    saveChat({ history, strategy, platform, stage, chatMode, profileName }) {
       const msgs = parseHistory(history);
       const id = ++state.seq;
       state.chats.push({
         id, platform: platform || '', status: 'open', strategy: strategy || '',
+        stage: stage || '', chat_mode: chatMode || '', profile_name: profileName || '',
         msg_count: msgs.length,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString()
       });
@@ -249,7 +259,8 @@ function initJson(jsonPath) {
         .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
         .slice(0, limitChats || 300)
         .map((c) => ({
-          id: c.id, strategy: c.strategy, msg_count: c.msg_count,
+          id: c.id, strategy: c.strategy, stage: c.stage || '', chat_mode: c.chat_mode || '',
+          profile_name: c.profile_name || '', msg_count: c.msg_count,
           updated_at: c.updated_at,
           result: (state.outcomes.find((o) => o.chat_id === c.id) || {}).result,
           messages: state.messages.filter((m) => m.chat_id === c.id)
@@ -263,13 +274,15 @@ function initJson(jsonPath) {
         .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
         .slice(0, limitChats || 1)
         .map((c) => ({
-          id: c.id, strategy: c.strategy, updated_at: c.updated_at,
+          id: c.id, strategy: c.strategy, stage: c.stage || '', chat_mode: c.chat_mode || '',
+          profile_name: c.profile_name || '', updated_at: c.updated_at,
           messages: state.messages.filter((m) => m.chat_id === c.id)
         }));
     },
     getAllChats() {
       return state.chats.map((c) => ({
-        id: c.id, status: c.status, strategy: c.strategy,
+        id: c.id, status: c.status, strategy: c.strategy, stage: c.stage || '',
+        chat_mode: c.chat_mode || '', profile_name: c.profile_name || '',
         msg_count: c.msg_count, created_at: c.created_at
       }));
     },
@@ -336,28 +349,42 @@ function monthsSince(iso) {
   return (Date.now() - t) / (1000 * 60 * 60 * 24 * 30);
 }
 
+function stageFamily(stage) {
+  const value = String(stage || '').toUpperCase();
+  if (value.includes('PRIVATE')) return 'private';
+  if (value.includes('AFTERCARE')) return 'aftercare';
+  if (value.includes('SAFETY')) return 'safety';
+  return 'public';
+}
+
+function scoreExperienceRow(row, query) {
+  const q = query || {};
+  if (q.stage && row.stage && stageFamily(q.stage) !== stageFamily(row.stage)) return null;
+  if (q.profileName && row.profile_name && q.profileName !== row.profile_name) return null;
+  const qKeywords = new Set(extractKeywords(q.history));
+  const chatKeywords = new Set(extractKeywords(row.messages.map((m) => m.text).join(' ')));
+  let overlap = 0;
+  for (const word of qKeywords) if (chatKeywords.has(word)) overlap++;
+  let score = overlap * 3;
+  if (q.strategy && row.strategy === q.strategy) score += 2;
+  if (q.stage && row.stage && stageFamily(q.stage) === stageFamily(row.stage)) score += 2;
+  if (q.profileName && row.profile_name === q.profileName) score += 2;
+  score += monthsSince(row.updated_at) <= 3 ? 1 : -2;
+  const qLines = String(q.history || '').split(/\r?\n/).filter(Boolean).length;
+  const ratio = qLines ? (row.msg_count || 1) / qLines : 1;
+  if (ratio > 0.5 && ratio < 2) score += 1;
+  return { ...row, score, overlap };
+}
+
 /** Скоринг успешных диалогов против нового чата:
  *  +3 за каждое совпадение ключевого слова (фетиши/темы),
  *  +2 за ту же стратегию, +1 если диалог свежее 3 мес (иначе −2),
  *  +1 за похожую длину диалога. */
-function findExamplesImpl(implObj, { history, strategy, limit }) {
+function findExamplesImpl(implObj, { history, strategy, stage, profileName, limit }) {
   const rows = implObj.getSuccessfulMessages(300);
   if (!rows.length) return [];
-  const qKeywords = new Set(extractKeywords(history));
-  const qLines = String(history || '').split(/\r?\n/).filter(Boolean).length;
-
-  const scored = rows.map((r) => {
-    const chatKeywords = new Set(extractKeywords(r.messages.map((m) => m.text).join(' ')));
-    let overlap = 0;
-    for (const w of qKeywords) if (chatKeywords.has(w)) overlap++;
-    let score = overlap * 3;
-    if (strategy && r.strategy === strategy) score += 2;
-    score += monthsSince(r.updated_at) <= 3 ? 1 : -2;
-    const ratio = qLines ? (r.msg_count || 1) / qLines : 1;
-    if (ratio > 0.5 && ratio < 2) score += 1;
-    return { id: r.id, result: r.result, strategy: r.strategy,
-             msg_count: r.msg_count, messages: r.messages, score, overlap };
-  });
+  const query = { history, strategy, stage, profileName };
+  const scored = rows.map((row) => scoreExperienceRow(row, query)).filter(Boolean);
 
   return scored
     .filter((r) => r.score >= 2)
@@ -366,15 +393,16 @@ function findExamplesImpl(implObj, { history, strategy, limit }) {
 }
 
 /** Готовые текст-блоки для промпта: примеры, анти-пример, статистика. */
-function getExperienceContextImpl(implObj, { history, strategy }) {
+function getExperienceContextImpl(implObj, { history, strategy, stage, profileName }) {
   const blocks = { count: 0, examplesBlock: '', statsBlock: '', antiBlock: '' };
 
-  const examples = findExamplesImpl(implObj, { history, strategy, limit: 3 });
+  const query = { history, strategy, stage, profileName };
+  const examples = findExamplesImpl(implObj, { ...query, limit: 3 });
   blocks.count = examples.length;
   if (examples.length) {
     const parts = examples.map((ex, i) => {
       const label = ex.result === 'won_tip' ? 'донат' : 'приват';
-      return `--- Пример ${i + 1} (исход: ${label}, стратегия: ${ex.strategy || '—'}) ---\n` +
+      return `--- Пример ${i + 1} (исход: ${label}, стратегия: ${ex.strategy || '—'}, стадия: ${ex.stage || 'не указана'}) ---\n` +
              compressDialog(ex.messages);
     });
     blocks.examplesBlock =
@@ -393,8 +421,12 @@ function getExperienceContextImpl(implObj, { history, strategy }) {
       `конверсия в приват/донат ${stats.conversion}%. По стратегиям: ${stratLine}.`;
   }
 
-  const lost = implObj.getLastLost(1);
-  if (lost.length) {
+  const lost = implObj.getLastLost(100)
+    .map((row) => scoreExperienceRow(row, query))
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 1);
+  if (lost.length && lost[0].score >= 0) {
     blocks.antiBlock =
       'АНТИ-ПРИМЕР (в похожем диалоге это привело к сливу юзера — не повторяй таких ошибок):\n' +
       compressDialog(lost[0].messages);

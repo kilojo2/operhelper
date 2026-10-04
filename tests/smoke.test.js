@@ -26,6 +26,9 @@ const sample = [
   '[АЛЬТЕРНАТИВА 1]',
   "You're making me curious hehe... tell me more ^_^",
   '',
+  '[АЛЬТЕРНАТИВА 2]',
+  'Tell me what caught your attention first :)',
+  '',
   '[ПРОГНОЗ]',
   '- если спросит про приват -> мягко приглашаем',
   '[ПОЧЕМУ]',
@@ -37,8 +40,10 @@ ok(blocks['АНАЛИЗ'] && blocks['АНАЛИЗ'].includes('Mike'), 'parseAssi
 ok((blocks['ОТВЕТ'] || '').includes('great taste'), 'parseAssistantResponse: блок ОТВЕТ');
 ok((blocks['АЛЬТЕРНАТИВА 1'] || '').includes('curious'), 'parseAssistantResponse: блок АЛЬТЕРНАТИВА 1');
 ok((blocks['ПОЧЕМУ'] || '').includes('вовлечён'), 'parseAssistantResponse: блок ПОЧЕМУ');
-ok(Object.keys(blocks).length === 6,
-  'parseAssistantResponse: ровно 6 блоков (получено ' + Object.keys(blocks).length + ')');
+ok(Object.keys(blocks).length === 7,
+  'parseAssistantResponse: ровно 7 блоков (получено ' + Object.keys(blocks).length + ')');
+ok(Parser.validateAssistantResponse(sample).valid,
+  'validateAssistantResponse: полный формат принят');
 
 /* ---- Парсер библиотеки зазывов на РЕАЛЬНОМ файле оператора ---- */
 const raw = fs.readFileSync(
@@ -58,7 +63,7 @@ const sys = Prompts.buildSystemPrompt({ name: 'Sophie', age: '22', forbidden: '�
 ok(sys.includes('Sophie'), 'buildSystemPrompt: имя модели подставлено');
 ok(sys.includes('анал'), 'buildSystemPrompt: запреты подставлены');
 ok(sys.includes('[ОТВЕТ]') && sys.includes('[ПРОГНОЗ]'), 'buildSystemPrompt: формат блоков задан');
-ok(sys.includes('ГОТОВАЯ БАЗА ФРАЗ'), 'buildSystemPrompt: база фраз подключена');
+ok(sys.includes('БЕЗОПАСНАЯ ВЫБОРКА ИЗ БИБЛИОТЕКИ'), 'buildSystemPrompt: безопасная выборка фраз подключена');
 
 const usr = Prompts.buildUserPrompt('user: hi\nmodel: hey ^^', 'fast');
 ok(usr.includes('FAST'), 'buildUserPrompt: принудительная стратегия FAST');

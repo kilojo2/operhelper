@@ -162,22 +162,35 @@
     const p = cfg.profile || {};
     $('#pfName').value = p.name || '';
     $('#pfAge').value = p.age || '';
+    $('#pfLanguage').value = p.language || 'English';
     $('#pfLook').value = p.look || '';
     $('#pfPersona').value = p.persona || '';
+    $('#pfVoice').value = p.voice || '';
+    $('#pfExamples').value = p.examples || '';
+    $('#pfOffers').value = p.offers || '';
     $('#pfAllowed').value = p.allowed || '';
     $('#pfForbidden').value = p.forbidden || '';
   }
 
   function collectSettings() {
+    const ageText = $('#pfAge').value.trim();
+    const age = Number(ageText);
+    if (ageText && (!Number.isInteger(age) || age < 18 || age > 99)) {
+      throw new Error('Возраст модели должен быть целым числом от 18 до 99');
+    }
     return {
       apiKey: $('#apiKeyInput').value.trim(),
       model: $('#modelSel').value,
       temperature: parseFloat($('#tempRange').value),
       profile: {
         name: $('#pfName').value.trim(),
-        age: $('#pfAge').value.trim(),
+        age: ageText,
+        language: $('#pfLanguage').value.trim() || 'English',
         look: $('#pfLook').value.trim(),
         persona: $('#pfPersona').value.trim(),
+        voice: $('#pfVoice').value.trim(),
+        examples: $('#pfExamples').value.trim(),
+        offers: $('#pfOffers').value.trim(),
         allowed: $('#pfAllowed').value.trim(),
         forbidden: $('#pfForbidden').value.trim()
       }
@@ -560,4 +573,3 @@
     } catch (e) { console.error('Ошибка отрисовки данных:', e); }
   });
 })();
-

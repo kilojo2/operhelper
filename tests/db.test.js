@@ -32,6 +32,12 @@ function runSuite(engine) {
   ok(saved.chatId > 0, `[${engine}] чат сохранён, id=${saved.chatId}`);
   ok(saved.msgCount === 4, `[${engine}] разобрано 4 сообщения (получено ${saved.msgCount})`);
 
+  const labels = db.parseHistory('user experience matters\nmodel citizen\nuser: real\nmodel: reply');
+  ok(labels.length === 3 && labels[0].role === 'raw' &&
+    labels[0].text.includes('user experience matters') && labels[0].text.includes('model citizen') &&
+    labels[1].text === 'real' && labels[2].text === 'reply',
+    `[${engine}] обычные слова user/model не приняты за метки ролей`);
+
   const again = db.saveChat({ history: 'просто строка без префиксов' });
   ok(again.msgCount === 1, `[${engine}] история без префиксов -> 1 raw-сообщение`);
 

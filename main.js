@@ -9,6 +9,8 @@ const fs = require('fs');
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_TIMEOUT_MS = 90000;
 const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
+const PROFILE_FIELDS = ['name', 'age', 'language', 'look', 'persona', 'voice',
+  'examples', 'offers', 'allowed', 'forbidden'];
 const MAX_CHAT_CHARS = 200 * 1024;
 let mainWindow = null;
 
@@ -62,8 +64,11 @@ function saveConfig(incoming) {
   if (ALLOWED_MODELS.has(data.model)) next.model = data.model;
   if (Number.isFinite(data.temperature)) next.temperature = Math.max(0, Math.min(2, data.temperature));
   if (data.profile && typeof data.profile === 'object') {
+    const age = String(data.profile.age || '').trim();
+    if (age && (!/^\d{1,2}$/.test(age) || Number(age) < 18 || Number(age) > 99))
+      throw new Error('Возраст модели должен быть целым числом от 18 до 99');
     next.profile = {};
-    for (const key of ['name', 'age', 'look', 'persona', 'allowed', 'forbidden'])
+    for (const key of PROFILE_FIELDS)
       next.profile[key] = String(data.profile[key] || '').slice(0, 5000);
   }
   const newKey = incoming && typeof incoming.apiKey === 'string' ? incoming.apiKey.trim() : '';
@@ -158,7 +163,11 @@ ipcMain.handle('exp:save', (_e, payload) => {
     if (!p.history || String(p.history).trim().length < 5)
       return { ok: false, error: 'История чата пуста' };
     return { ok: true, ...exp.saveChat({
-      history: String(p.history), strategy: p.strategy, platform: p.platform }) };
+      history: String(p.history), strategy: p.strategy, platform: p.platform,
+      stage: String(p.stage || '').slice(0, 40),
+      chatMode: String(p.chatMode || '').slice(0, 20),
+      profileName: String(p.profileName || '').slice(0, 120)
+    }) };
   } catch (err) { return { ok: false, error: err.message }; }
 });
 ipcMain.handle('exp:outcome', (_e, payload) => {
@@ -180,7 +189,10 @@ ipcMain.handle('exp:examples', (_e, payload) => {
   try {
     const p = payload || {};
     return { ok: true, ...exp.getExperienceContext({
-      history: String(p.history || ''), strategy: String(p.strategy || '') }) };
+      history: String(p.history || ''), strategy: String(p.strategy || ''),
+      stage: String(p.stage || '').slice(0, 40),
+      profileName: String(p.profileName || '').slice(0, 120)
+    }) };
   } catch (err) {
     return { ok: false, error: err.message, count: 0,
       examplesBlock: '', statsBlock: '', antiBlock: '' };

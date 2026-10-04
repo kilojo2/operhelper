@@ -75,8 +75,14 @@
           <select id="strategySel" title="Стратегия работы с пользователем">
             <option value="auto">🧠 Авто — ассистент решает сам</option>
             <option value="slow">🐢 Мягкий подвод к привату</option>
-            <option value="fast">⚡ Быстрый инвайт (юзер хорни)</option>
-            <option value="donate">💰 Развод на донат / тип</option>
+            <option value="fast">⚡ Быстрый инвайт (юзер явно готов)</option>
+            <option value="donate">💎 Уместное платное предложение</option>
+          </select>
+          <select id="chatModeSel" title="Где сейчас идёт разговор">
+            <option value="auto">🪄 Контекст: определить автоматически</option>
+            <option value="public">💬 Публичный чат</option>
+            <option value="private">🔒 Приват уже идёт</option>
+            <option value="aftercare">🌙 Завершение / aftercare</option>
           </select>
           <button id="analyzeBtn" class="btn primary">✨ Проанализировать<small>Ctrl+Enter</small></button>
         </div>
@@ -219,10 +225,14 @@
       <div class="card-head"><h3>👤 Профиль модели — ассистент пишет от её лица</h3></div>
       <div class="field-grid">
         <div class="field-row"><label>Имя</label><input id="pfName" placeholder="Например: Sophie"></div>
-        <div class="field-row"><label>Возраст</label><input id="pfAge" placeholder="22"></div>
-        <div class="field-row"><label>Типаж / внешность</label><input id="pfLook" placeholder="блондинка, спортивная, милае лицо"></div>
+        <div class="field-row"><label>Возраст (только 18+)</label><input id="pfAge" type="number" min="18" max="99" inputmode="numeric" placeholder="22"></div>
+        <div class="field-row"><label>Язык ответов</label><input id="pfLanguage" placeholder="English"></div>
+        <div class="field-row"><label>Типаж / внешность</label><input id="pfLook" placeholder="блондинка, спортивная, милое лицо"></div>
       </div>
-      <div class="field-row"><label>Характер / стиль общения</label><textarea id="pfPersona" rows="2" placeholder="игривая, дразнит юзеров, называет их baby"></textarea></div>
+      <div class="field-row"><label>Характер / образ</label><textarea id="pfPersona" rows="2" placeholder="тёплая, игривая, уверенная; любит сначала узнать человека"></textarea></div>
+      <div class="field-row"><label>Голос и привычки письма</label><textarea id="pfVoice" rows="2" placeholder="короткие lowercase-сообщения, u вместо you, максимум один эмодзи, baby — редко"></textarea></div>
+      <div class="field-row"><label>Примеры настоящих сообщений модели</label><textarea id="pfExamples" rows="4" placeholder="Добавьте 5–20 её типичных сообщений, по одному на строку. Ассистент будет повторять манеру, а не текст дословно."></textarea></div>
+      <div class="field-row"><label>Доступные шоу, действия и точные цены</label><textarea id="pfOffers" rows="3" placeholder="Указывайте только то, что реально доступно. Если цены нет здесь, ассистент не будет её придумывать."></textarea></div>
       <div class="field-grid">
         <div class="field-row"><label>Можно упоминать</label><input id="pfAllowed" placeholder="любимые фетиши, игрушки..."></div>
         <div class="field-row"><label>Запрещено упоминать</label><input id="pfForbidden" placeholder="анал и т.п."></div>
@@ -252,6 +262,7 @@
 
 <div id="toast" class="hidden">Скопировано ✓</div>
 
+<script src="lib/browser-experience.js"></script>
 <script src="lib/api-web.js"></script>
 <script src="lib/parser.js"></script>
 <script src="prompts.js"></script>

@@ -9,7 +9,6 @@
  *  - F-02: allowlist Host (анти-DNS-rebinding) и проверка Origin на POST;
  *          JSON принимается только с Content-Type: application/json;
  *  - F-03: token bucket на IP (/api/chat — 20 зап./мин, прочие API — 60);
- *          при HOST вне loopback обязателен токен доступа (печатается при старте);
  *  - F-04: конфиг хранится ВНЕ папки проекта (%APPDATA%/operator-helper);
  *  - F-06: nosniff / no-store / X-Frame-Options на всех ответах;
  *  - F-10: журнал запросов /api/* и ошибок в консоли;
@@ -23,7 +22,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const net = require('net');
-const crypto = require('crypto');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 /* Облако (Railway и т.п.) выставляет PORT и требует слушать 0.0.0.0.
@@ -65,6 +63,8 @@ const MAX_CHAT_CHARS = 200 * 1024;
 const MAX_CONCURRENT_CHATS = Math.max(1, Math.min(32,
   parseInt(process.env.MAX_CONCURRENT_CHATS || '4', 10) || 4));
 const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
+const PROFILE_FIELDS = ['name', 'age', 'language', 'look', 'persona', 'voice',
+  'examples', 'offers', 'allowed', 'forbidden'];
 let activeChats = 0;
 const MAX_BODY = 512 * 1024; // 512 КБ на запрос (истории чатов бывают длинные)
 
@@ -140,7 +140,7 @@ function applyCors(req, res) {
   if (!origin) return false;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Access-Token, X-Admin-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader('Vary', 'Origin');
   return true;
@@ -258,26 +258,11 @@ setInterval(() => { // периодическая уборка «мёртвых�
   for (const [k, v] of buckets) if (v.ts < cutoff) buckets.delete(k);
 }, 10 * 60 * 1000).unref();
 
-/* ---------------- Guard'ы: Host / Origin / токен (F-02, F-03) ---------------- */
+/* ---------------- Guard'ы: Host / Origin (F-02) ---------------- */
 function isLoopbackBind() {
   const h = String(HOST).toLowerCase();
   return !h || h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '::ffff:127.0.0.1';
 }
-/* Токен доступа (F-03):
-   - ACCESS_TOKEN=<значение> — требовать этот токен всегда (пароль на сайт);
-   - ACCESS_TOKEN=off        — отключить проверку даже в сети
-                               (режим публичного сайта, напр. за Railway);
-   - не задан                — локально проверка выключена,
-                               в сети генерируется случайный токен. */
-const ENV_TOKEN = String(process.env.ACCESS_TOKEN || '');
-const TOKEN_DISABLED = ENV_TOKEN.toLowerCase() === 'off';
-const TOKEN_REQUIRED = TOKEN_DISABLED ? false : (!!ENV_TOKEN || !isLoopbackBind());
-const ACCESS_TOKEN = TOKEN_DISABLED ? '' : (ENV_TOKEN || crypto.randomBytes(24).toString('hex'));
-const ENV_ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || '');
-const ADMIN_TOKEN_REQUIRED = !!ENV_ADMIN_TOKEN || TOKEN_REQUIRED || !isLoopbackBind();
-const ADMIN_TOKEN = ENV_ADMIN_TOKEN || (ADMIN_TOKEN_REQUIRED
-  ? crypto.randomBytes(24).toString('hex') : '');
-
 function hostnameOfHostHeader(header) {
   try {
     const u = new URL(`http://${String(header || '')}`);
@@ -318,30 +303,6 @@ function originAllowed(req) {
     const port = u.port ? parseInt(u.port, 10) : 80;
     return port === PORT;
   } catch { return false; }
-}
-function tokenEquals(expected, provided) {
-  if (!provided) return false;
-  const a = Buffer.from(String(provided));
-  const b = Buffer.from(String(expected));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-function requestToken(req, header, queryName) {
-  let queryToken = '';
-  try { queryToken = new URL(req.url, 'http://x').searchParams.get(queryName) || ''; }
-  catch { /* ignore */ }
-  return String(req.headers[header] || '') || queryToken;
-}
-function tokenOk(req) {
-  return !TOKEN_REQUIRED || tokenEquals(ACCESS_TOKEN,
-    requestToken(req, 'x-access-token', 'token'));
-}
-function adminTokenOk(req) {
-  return !ADMIN_TOKEN_REQUIRED || tokenEquals(ADMIN_TOKEN,
-    requestToken(req, 'x-admin-token', 'adminToken'));
-}
-function adminApi(method, pathname) {
-  return (method === 'POST' && (pathname === '/api/config' || pathname === '/api/test-key')) ||
-         pathname.startsWith('/api/exp/');
 }
 /* ---------------- DeepSeek ---------------- */
 /* Введённый для проверки ключ имеет приоритет; рабочий env-ключ нельзя затереть web-конфигом. */
@@ -415,8 +376,11 @@ function sanitizeConfigInput(body) {
   if (body.profile !== undefined) {
     if (!body.profile || typeof body.profile !== 'object' || Array.isArray(body.profile))
       throw new ApiError(400, 'profile должен быть объектом');
+    const age = String(body.profile.age || '').trim();
+    if (age && (!/^\d{1,2}$/.test(age) || Number(age) < 18 || Number(age) > 99))
+      throw new ApiError(400, 'Возраст модели должен быть целым числом от 18 до 99');
     const p = {};
-    for (const k of ['name', 'age', 'look', 'persona', 'allowed', 'forbidden']) p[k] = strField(body.profile[k], 2000) || '';
+    for (const k of PROFILE_FIELDS) p[k] = strField(body.profile[k], 5000) || '';
     out.profile = p;
   }
   return out;
@@ -505,7 +469,10 @@ async function handleApi(req, res, pathname) {
       saved = exp.saveChat({
         history,
         strategy: strField(body.strategy, 20) || '',
-        platform: strField(body.platform, 40) || ''
+        platform: strField(body.platform, 40) || '',
+        stage: strField(body.stage, 40) || '',
+        chatMode: strField(body.chatMode, 20) || '',
+        profileName: strField(body.profileName, 120) || ''
       });
     } catch (e) {
       log('опыт: ошибка сохранения — ' + e.message);
@@ -536,7 +503,9 @@ async function handleApi(req, res, pathname) {
     try {
       ctx = exp.getExperienceContext({
         history: String(body.history || ''),
-        strategy: strField(body.strategy, 20) || ''
+        strategy: strField(body.strategy, 20) || '',
+        stage: strField(body.stage, 40) || '',
+        profileName: strField(body.profileName, 120) || ''
       });
     } catch (e) {
       return json(res, 200, { ok: false, count: 0, examplesBlock: '',
@@ -602,23 +571,12 @@ const server = http.createServer(async (req, res) => {
       }
       // F-02: CSRF — источник браузерного POST должен совпадать с сервером
       if (req.method === 'POST' && !originAllowed(req)) return json(res, 403, { error: 'Forbidden origin' });
-      // F-03: троттлинг ДО проверки токена (чтобы не брутфорсили токен)
+      // F-03: ограничение частоты запросов
       const retryAfter = rateLimit(req, pathname);
       if (retryAfter) {
         res.setHeader('Retry-After', String(retryAfter));
         return json(res, 429, { error: 'Слишком много запросов — попробуйте позже' });
       }
-      // F-03: в сетевом режиме обязателен токен доступа
-      if (!tokenOk(req)) {
-        return json(res, 401, { error: TOKEN_REQUIRED ? 'Требуется токен доступа' : '', needToken: TOKEN_REQUIRED });
-      }
-      if (adminApi(req.method, pathname) && !adminTokenOk(req)) {
-        return json(res, 403, {
-          error: 'Требуется административный токен',
-          needAdminToken: ADMIN_TOKEN_REQUIRED
-        });
-      }
-
       return await handleApi(req, res, pathname);
     }
 
@@ -642,30 +600,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  const publicHost = [...EXTRA_HOSTS][0];
-  const publicBase = publicHost ? `https://${publicHost}` : `http://<IP-этого-ПК>:${PORT}`;
   console.log('');
   console.log('🎬 Operator Helper (веб-версия) запущен!');
   console.log(`   Локальный адрес:  http://localhost:${PORT}`);
   console.log(`   Конфиг:           ${CONFIG_PATH}`);
   console.log('   Rate-limit:       /api/chat — 20 зап./мин, прочие API — 60 зап./мин');
   console.log('   Остановить сервер: Ctrl+C');
-  if (TOKEN_REQUIRED) {
-    console.log('');
-    console.log(`⚠️  Сервер открыт ПО СЕТИ (HOST=${HOST}). Для доступа к /api обязателен токен:`);
-    console.log(`   Токен доступа: ${ACCESS_TOKEN}`);
-    console.log(`   Ссылка для клиентов: ${publicBase}/#token=${encodeURIComponent(ACCESS_TOKEN)}`);
-  } else if (!isLoopbackBind() && TOKEN_DISABLED) {
-    console.log('');
-    console.log('⚠️  ACCESS_TOKEN=off: API открыт всем, кто знает адрес сайта.');
-  }
-  if (ADMIN_TOKEN_REQUIRED) {
-    const auth = new URLSearchParams();
-    if (TOKEN_REQUIRED) auth.set('token', ACCESS_TOKEN);
-    auth.set('adminToken', ADMIN_TOKEN);
-    console.log(`   Административный токен: ${ADMIN_TOKEN}`);
-    console.log(`   Ссылка администратора: ${publicBase}/#${auth.toString()}`);
-  }
+  if (!isLoopbackBind()) console.log('   Доступ:          открыт, без пароля');
   if (EXTRA_HOSTS.size) {
     console.log(`   Разрешённые внешние домены: ${[...EXTRA_HOSTS].join(', ')}`);
   }

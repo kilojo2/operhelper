@@ -31,46 +31,6 @@ async function readJson(request) {
   catch { throw new Error('Некорректный JSON в теле запроса'); }
 }
 
-function requestToken(request, header, queryName) {
-  const headerValue = request.headers.get(header);
-  if (headerValue) return headerValue;
-  try { return new URL(request.url).searchParams.get(queryName) || ''; }
-  catch { return ''; }
-}
-
-function accessGuard(request, env) {
-  const expected = String(env.ACCESS_TOKEN || '').trim();
-  if (!expected) {
-    return json(503, {
-      error: 'В Cloudflare Runtime Variables & Secrets не настроен ACCESS_TOKEN.'
-    });
-  }
-  if (expected.toLowerCase() === 'off') return null;
-  const provided = requestToken(request, 'X-Access-Token', 'token');
-  return provided === expected ? null : json(401, {
-    error: 'Требуется токен доступа', needToken: true
-  });
-}
-
-function adminGuard(request, env) {
-  const access = String(env.ACCESS_TOKEN || '').trim();
-  const expected = String(env.ADMIN_TOKEN || (access.toLowerCase() === 'off' ? '' : access)).trim();
-  if (!expected) {
-    return json(503, {
-      error: 'В Cloudflare Runtime Variables & Secrets не настроен ADMIN_TOKEN.'
-    });
-  }
-  const provided = requestToken(request, 'X-Admin-Token', 'adminToken');
-  return provided === expected ? null : json(403, {
-    error: 'Требуется административный токен', needAdminToken: true
-  });
-}
-
-function isAdminRoute(method, pathname) {
-  return (method === 'POST' && (pathname === '/api/config' || pathname === '/api/test-key')) ||
-    (pathname.startsWith('/api/exp/') && pathname !== '/api/exp/examples');
-}
-
 async function callDeepSeek(env, options) {
   const key = String(options.apiKey || env.DEEPSEEK_API_KEY || '').trim();
   if (!key) {
@@ -227,13 +187,6 @@ export default {
       return json(405, { error: 'Method Not Allowed' }, { Allow: 'GET, HEAD, POST, OPTIONS' });
     }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
-
-    const denied = accessGuard(request, env);
-    if (denied) return denied;
-    if (isAdminRoute(request.method, url.pathname)) {
-      const adminDenied = adminGuard(request, env);
-      if (adminDenied) return adminDenied;
-    }
 
     try {
       return await handleApi(request, env, url.pathname);

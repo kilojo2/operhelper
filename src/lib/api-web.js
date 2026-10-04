@@ -2,7 +2,7 @@
  * HTTP-шим для веб-версии: реализует тот же window.api, что и Electron-preload,
  * но через запросы к нашему серверу. Ключ хранится только на сервере и никогда
  * им не возвращается (F-01); Host/Origin проверяются сервером (F-02);
- * в сетевом режиме требуется токен доступа (F-03).
+ * веб-доступ открыт, а ключ DeepSeek остаётся только на сервере.
  *
  * Файл загружается и в десктопе, но там preload уже задал window.api —
  * поэтому первой строкой выходим, чтобы ничего не перезаписать.
@@ -12,9 +12,10 @@
 
   if (window.api) return; // Electron: preload уже всё подключил
 
-  const TOKEN_KEY = 'oh_access_token';
-  const ADMIN_TOKEN_KEY = 'oh_admin_token';
   const LOCAL_CONFIG_KEY = 'oh_web_config_v1';
+  const localExperience = window.BrowserExperience
+    ? window.BrowserExperience.create(localStorage, 'oh_experience_v1')
+    : null;
 
   function loadLocalConfig() {
     try {
@@ -33,16 +34,13 @@
     catch { /* private mode / storage disabled */ }
   }
 
-  // Токен доступа (нужен только при запуске сервера с HOST=0.0.0.0):
-  // берётся из ?token=... или #token=... и кладётся в sessionStorage.
-  (function captureTokens() {
+  // Одноразово удаляем данные старой токен-авторизации из сессии и URL.
+  (function clearLegacyAccessState() {
     try {
+      sessionStorage.removeItem('oh_access_token');
+      sessionStorage.removeItem('oh_admin_token');
       const query = new URLSearchParams(location.search);
       const hash = new URLSearchParams(location.hash.replace(/^#\??/, ''));
-      const access = hash.get('token') || query.get('token');
-      const admin = hash.get('adminToken') || query.get('adminToken');
-      if (access) sessionStorage.setItem(TOKEN_KEY, access);
-      if (admin) sessionStorage.setItem(ADMIN_TOKEN_KEY, admin);
       query.delete('token'); query.delete('adminToken');
       hash.delete('token'); hash.delete('adminToken');
       const q = query.toString();
@@ -54,12 +52,6 @@
   async function request(url, options) {
     const opts = options || {};
     const headers = Object.assign({}, opts.headers || {});
-    try {
-      const t = sessionStorage.getItem(TOKEN_KEY);
-      if (t) headers['X-Access-Token'] = t; // F-03: доступ по токену в сетевом режиме
-      const admin = sessionStorage.getItem(ADMIN_TOKEN_KEY);
-      if (admin) headers['X-Admin-Token'] = admin;
-    } catch { /* ignore */ }
 
     let r;
     try {
@@ -69,28 +61,6 @@
       throw new Error(`Не удалось связаться с сервером${reason}`);
     }
 
-    if (r.status === 401 && !opts.__retriedToken) {
-      let body = null;
-      try { body = await r.clone().json(); } catch { /* ignore */ }
-      if (body && body.needToken) {
-        const tok = (prompt('Сервер запущен в сетевом режиме.\nВведите токен доступа (он показан в консоли сервера):') || '').trim();
-        if (tok) {
-          try { sessionStorage.setItem(TOKEN_KEY, tok); } catch { /* ignore */ }
-          return request(url, Object.assign({}, opts, { __retriedToken: true }));
-        }
-      }
-    }
-    if (r.status === 403 && !opts.__retriedAdmin) {
-      let body = null;
-      try { body = await r.clone().json(); } catch { /* ignore */ }
-      if (body && body.needAdminToken) {
-        const tok = (prompt('Эта операция требует административный токен.\nВведите токен из консоли сервера:') || '').trim();
-        if (tok) {
-          try { sessionStorage.setItem(ADMIN_TOKEN_KEY, tok); } catch { /* ignore */ }
-          return request(url, Object.assign({}, opts, { __retriedAdmin: true }));
-        }
-      }
-    }
     return r;
   }
 
@@ -164,12 +134,22 @@
     setOnTop: () => {},
 
     // База опыта (обучение на чатах, Фаза 1)
-    expSave: (payload) => post('/api/exp/save', payload),
-    expOutcome: (payload) => post('/api/exp/outcome', payload),
-    expStats: () => request('/api/exp/stats').then(readApiResponse),
-    expClear: () => post('/api/exp/clear', {}),
+    expSave: async (payload) => localExperience
+      ? localExperience.saveChat(payload || {})
+      : { ok: false, error: 'Локальная база опыта недоступна' },
+    expOutcome: async (payload) => localExperience
+      ? localExperience.setOutcome(payload || {})
+      : { ok: false, error: 'Локальная база опыта недоступна' },
+    expStats: async () => localExperience
+      ? localExperience.stats()
+      : { ok: false, error: 'Локальная база опыта недоступна' },
+    expClear: async () => localExperience
+      ? localExperience.clear()
+      : { ok: false, error: 'Локальная база опыта недоступна' },
 
     // Подбор примеров из опыта (Фаза 2)
-    expExamples: (payload) => post('/api/exp/examples', payload)
+    expExamples: async (payload) => localExperience
+      ? localExperience.experienceContext(payload || {})
+      : { ok: true, count: 0, examplesBlock: '', statsBlock: '', antiBlock: '' }
   };
 })();

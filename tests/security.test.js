@@ -68,7 +68,6 @@ async function waitServer(port, tries) {
     cwd: path.join(__dirname, '..'),
     env: Object.assign({}, process.env, {
       PORT: String(port), HOST: '127.0.0.1', CONFIG_PATH: cfgPath,
-      ADMIN_TOKEN: 'admin-test-token',
       RENDER_EXTERNAL_HOSTNAME: 'operator-helper-test.onrender.com'
     }),
     stdio: ['ignore', 'ignore', 'pipe']
@@ -106,7 +105,7 @@ async function waitServer(port, tries) {
       Host: 'operator-helper-test.onrender.com',
       Origin: 'https://operhelper.killasnazz.workers.dev',
       'Access-Control-Request-Method': 'POST',
-      'Access-Control-Request-Headers': 'content-type,x-access-token'
+      'Access-Control-Request-Headers': 'content-type'
     });
     ok(r.status === 204, 'Cloudflare: CORS preflight -> 204');
     ok(r.headers['access-control-allow-origin'] === 'https://operhelper.killasnazz.workers.dev',
@@ -125,15 +124,16 @@ async function waitServer(port, tries) {
     r = await rawReq(port, 'DELETE', '/api/data');
     ok(r.status === 405, 'F-11: DELETE -> 405');
 
-    /* ---- F-02: CSRF через text/plain (PoC из аудита) ---- */
+    /* ---- Открытый доступ без пароля ---- */
     r = await rawReq(port, 'POST', '/api/config',
       { 'Content-Type': 'application/json' }, '{}');
     body = JSON.parse(r.body);
-    ok(r.status === 403 && body.needAdminToken === true,
-      'административный API отклоняет обычного пользователя без admin-токена');
+    ok(r.status === 200 && body.ok === true,
+      'настройки доступны без access/admin-токенов');
 
+    /* ---- F-02: CSRF через text/plain (PoC из аудита) ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'text/plain', 'X-Admin-Token': 'admin-test-token' },
+      { 'Content-Type': 'text/plain' },
       '{"apiKey":"sk-HACKED","profile":{"name":"AUDIT_CSRF_PROOF"}}');
     ok(r.status === 415, 'F-02: POST text/plain -> 415, получено ' + r.status);
 
@@ -144,7 +144,7 @@ async function waitServer(port, tries) {
 
     /* ---- F-01: пустой ключ при сохранении = «не менять» ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'application/json', 'X-Admin-Token': 'admin-test-token' },
+      { 'Content-Type': 'application/json' },
       JSON.stringify({ apiKey: '', profile: { name: 'Renamed' } }));
     body = JSON.parse(r.body);
     ok(r.status === 200 && body.ok === true && body.hasKey === true,
@@ -153,9 +153,30 @@ async function waitServer(port, tries) {
     ok(saved.apiKey === 'sk-TESTKEY1234567890', 'F-01: старый ключ НЕ перезаписан пустым');
     ok(saved.profile.name === 'Renamed', 'профиль при этом обновился');
 
+    /* ---- профиль модели: совершеннолетие и расширенная карточка голоса ---- */
+    r = await rawReq(port, 'POST', '/api/config',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ profile: { name: 'Minor profile', age: '17' } }));
+    body = JSON.parse(r.body);
+    ok(r.status === 400 && /18/.test(body.error || ''),
+      'профиль младше 18 лет отклоняется');
+
+    r = await rawReq(port, 'POST', '/api/config',
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ profile: {
+        name: 'Sophie', age: '22', language: 'English',
+        voice: 'lowercase and short', examples: 'hey hey :)',
+        offers: 'private show — 100 tokens'
+      } }));
+    body = JSON.parse(r.body);
+    saved = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+    ok(r.status === 200 && body.ok === true && saved.profile.voice === 'lowercase and short' &&
+      saved.profile.examples === 'hey hey :)' && saved.profile.offers.includes('100 tokens'),
+    'расширенная карточка голоса сохраняется');
+
     /* ---- новый ключ сохраняется ---- */
     r = await rawReq(port, 'POST', '/api/config',
-      { 'Content-Type': 'application/json', 'X-Admin-Token': 'admin-test-token' }, JSON.stringify({ apiKey: 'sk-NEWKEY9999' }));
+      { 'Content-Type': 'application/json' }, JSON.stringify({ apiKey: 'sk-NEWKEY9999' }));
     saved = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
     ok(saved.apiKey === 'sk-NEWKEY9999', 'новый ключ записывается в конфиг');
 
@@ -173,8 +194,7 @@ async function waitServer(port, tries) {
     const huge = JSON.stringify({ profile: { name: 'x'.repeat(530 * 1024) } });
     r = await rawReq(port, 'POST', '/api/config', {
       'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(huge),
-      'X-Admin-Token': 'admin-test-token'
+      'Content-Length': Buffer.byteLength(huge)
     }, huge);
     ok(r.status === 413, 'слишком большое тело -> стабильный HTTP 413');
 

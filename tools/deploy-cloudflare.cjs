@@ -4,8 +4,6 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const requiredSecrets = [
-  'ACCESS_TOKEN',
-  'ADMIN_TOKEN',
   'DEEPSEEK_API_KEY',
 ];
 

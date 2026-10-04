@@ -42,6 +42,26 @@ ok(ctx.statsBlock.includes('СТАТИСТИКА'), 'блок статистик
 ok(ctx.antiBlock.includes('АНТИ-ПРИМЕР'), 'анти-пример из слитого чата присутствует');
 ok(!ctx.examplesBlock.includes('hi there'), 'несовпадающий диалог не попал в примеры');
 
+/* Опыт разных моделей и стадий не смешивается */
+const publicChat = db.saveChat({
+  history: 'user: stockings please\nmodel: tell me what style of stockings u like :)',
+  strategy: 'slow', stage: 'PUBLIC_ENGAGED', profileName: 'Sophie'
+});
+const privateChat = db.saveChat({
+  history: 'user: stockings please\nmodel: private-stage-only stockings response',
+  strategy: 'slow', stage: 'PRIVATE_ACTIVE', profileName: 'Sophie'
+});
+db.markOutcome(publicChat.chatId, 'won_private', 0);
+db.markOutcome(privateChat.chatId, 'won_tip', 0);
+ctx = db.getExperienceContext({
+  history: 'user: i love stockings', strategy: 'slow',
+  stage: 'PUBLIC_READY', profileName: 'Sophie'
+});
+ok(ctx.examplesBlock.includes('what style of stockings'),
+  'публичный успешный пример подобран для публичной стадии');
+ok(!ctx.examplesBlock.includes('private-stage-only'),
+  'пример активного привата не подмешан в публичный чат');
+
 try { fs.rmSync(tmp + '.json', { force: true }); } catch { /* ignore */ }
 
 console.log(failed ? ('\nИТОГ: ПРОВАЛЕНО ' + failed) : '\nИТОГ: ВСЕ ТЕСТЫ ПРОШЛИ');
