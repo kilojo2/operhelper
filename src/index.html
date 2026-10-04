@@ -36,6 +36,17 @@
     <path d="M4 6h6M14 6h6M4 12h10M18 12h2M4 18h2M10 18h10"/>
     <circle cx="12" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>
   </symbol>
+  <symbol id="ui-copy" viewBox="0 0 24 24">
+    <rect x="8" y="8" width="11" height="11" rx="2"/>
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+  </symbol>
+  <symbol id="ui-refresh" viewBox="0 0 24 24">
+    <path d="M20 7v5h-5"/><path d="M4 17v-5h5"/>
+    <path d="M6.1 9a7 7 0 0 1 11.2-2.2L20 9M4 15l2.7 2.2A7 7 0 0 0 17.9 15"/>
+  </symbol>
+  <symbol id="ui-chevron" viewBox="0 0 24 24">
+    <path d="m7 10 5 5 5-5"/>
+  </symbol>
 </svg>
 
 <header id="titlebar">
@@ -130,26 +141,100 @@
       </div>
 
       <div id="resultArea" class="hidden">
-        <div id="analysisCard" class="card hidden">
-          <div class="card-head"><h3>🔎 Портрет пользователя</h3><span id="strategyChip" class="chip slow"></span></div>
-          <pre id="analysisText"></pre>
-        </div>
-        <div class="card answer-card best">
-          <div class="card-head"><h3>🎯 Лучший ответ</h3>
-            <button class="btn small ghost copy-main-btn">📋 Копировать</button></div>
-          <div id="mainAnswer" class="answer-text"></div>
-        </div>
-        <div id="altsWrap" class="alts-grid"></div>
-        <div class="two-col">
-          <div id="forecastCard" class="card hidden">
-            <div class="card-head"><h3>🔮 Прогноз ответов юзера</h3></div>
-            <pre id="forecastText"></pre>
+        <div class="response-studio-head">
+          <div class="response-studio-title">
+            <span class="eyebrow">Response studio</span>
+            <h2>Готовые фразы</h2>
+            <p>Основной вариант уже готов к отправке. Выберите другой тон, если нужно быстро изменить только формулировку.</p>
           </div>
-          <div id="whyCard" class="card hidden">
-            <div class="card-head"><h3>🧩 Логика решения</h3></div>
-            <pre id="whyText"></pre>
+          <div class="response-controls">
+            <div class="tone-picker">
+              <span class="tone-caption">Тон новой версии</span>
+              <div class="tone-options" role="group" aria-label="Тон новой версии ответа">
+                <button type="button" class="tone-option active" data-tone="softer" aria-pressed="true">Мягче</button>
+                <button type="button" class="tone-option" data-tone="bolder" aria-pressed="false">Смелее</button>
+                <button type="button" class="tone-option" data-tone="shorter" aria-pressed="false">Короче</button>
+              </div>
+            </div>
+            <button id="regenerateReplyBtn" type="button" class="btn ghost regenerate-reply-btn">
+              <svg class="button-icon" aria-hidden="true"><use href="#ui-refresh"></use></svg>
+              <span>Перегенерировать только ответ</span>
+            </button>
           </div>
         </div>
+
+        <article class="card answer-card best">
+          <div class="card-head answer-card-head">
+            <div>
+              <span class="answer-kicker">Рекомендуемый вариант</span>
+              <h3>Готово к отправке</h3>
+            </div>
+            <button type="button" class="btn small copy-answer-btn copy-main-btn" data-copy-target="mainAnswer" aria-label="Скопировать рекомендуемый ответ">
+              <svg class="button-icon" aria-hidden="true"><use href="#ui-copy"></use></svg>
+              <span>Скопировать</span>
+            </button>
+          </div>
+          <div id="mainAnswer" class="answer-text" aria-live="polite"></div>
+        </article>
+
+        <div class="alternatives-heading">
+          <h3>Альтернативы</h3>
+          <span>Тот же контекст, другая подача</span>
+        </div>
+        <div id="altsWrap" class="alts-grid">
+          <article class="card answer-card alt">
+            <div class="card-head answer-card-head">
+              <span class="answer-kicker">Вариант 2</span>
+              <button type="button" class="btn small ghost copy-answer-btn" data-copy-target="altAnswer1" aria-label="Скопировать альтернативу 1">
+                <svg class="button-icon" aria-hidden="true"><use href="#ui-copy"></use></svg>
+                <span>Скопировать</span>
+              </button>
+            </div>
+            <div id="altAnswer1" class="answer-text"></div>
+          </article>
+          <article class="card answer-card alt">
+            <div class="card-head answer-card-head">
+              <span class="answer-kicker">Вариант 3</span>
+              <button type="button" class="btn small ghost copy-answer-btn" data-copy-target="altAnswer2" aria-label="Скопировать альтернативу 2">
+                <svg class="button-icon" aria-hidden="true"><use href="#ui-copy"></use></svg>
+                <span>Скопировать</span>
+              </button>
+            </div>
+            <div id="altAnswer2" class="answer-text"></div>
+          </article>
+        </div>
+
+        <details id="analysisDetails" class="analysis-details">
+          <summary>
+            <span class="analysis-summary-copy">
+              <strong>Служебный анализ</strong>
+              <small>Стратегия, портрет пользователя, прогноз и логика решения</small>
+            </span>
+            <span class="details-chevron" aria-hidden="true">
+              <svg><use href="#ui-chevron"></use></svg>
+            </span>
+          </summary>
+          <div class="analysis-details-body">
+            <div id="strategyCard" class="analysis-panel hidden">
+              <span class="analysis-label">Стратегия</span>
+              <span id="strategyChip" class="chip slow"></span>
+            </div>
+            <div class="analysis-grid">
+              <section id="analysisCard" class="analysis-panel hidden">
+                <h3>Портрет пользователя</h3>
+                <pre id="analysisText"></pre>
+              </section>
+              <section id="forecastCard" class="analysis-panel hidden">
+                <h3>Прогноз продолжения</h3>
+                <pre id="forecastText"></pre>
+              </section>
+              <section id="whyCard" class="analysis-panel hidden">
+                <h3>Логика решения</h3>
+                <pre id="whyText"></pre>
+              </section>
+            </div>
+          </div>
+        </details>
       </div>
 
       <details id="libraryBox">
@@ -293,6 +378,7 @@
 <script src="lib/browser-experience.js"></script>
 <script src="lib/api-web.js"></script>
 <script src="lib/parser.js"></script>
+<script src="lib/assistant-result.js"></script>
 <script src="lib/ai-json.js"></script>
 <script src="lib/music-presets.js"></script>
 <script src="prompts.js"></script>

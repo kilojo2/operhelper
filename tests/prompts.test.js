@@ -93,3 +93,36 @@ test('user prompt передаёт выбранный режим и машинн
   assert.match(userPrompt, /режим, выбранный оператором: PRIVATE/);
   assert.match(userPrompt, /предварительная стадия: PRIVATE_ACTIVE/);
 });
+
+test('перегенерация меняет только фразы и задаёт строгий JSON-контракт', () => {
+  const common = {
+    profile: {
+      name: 'Sophie', age: '22', language: 'English',
+      voice: 'lowercase, short messages', offers: 'private show'
+    },
+    history: 'user: can i see more?',
+    chatMode: 'public',
+    analysis: 'пользователь сам просит продолжение',
+    strategy: 'SOFT CTA — интерес подтверждён',
+    current: {
+      reply: 'maybe i could show u a little more in private if u want ;)',
+      alternatives: ['want a little preview first?', 'tell me what u wanna see :)']
+    }
+  };
+
+  const softer = Prompts.buildReplyRegenerationMessages({ ...common, tone: 'softer' });
+  const bolder = Prompts.buildReplyRegenerationMessages({ ...common, tone: 'bolder' });
+  const shorter = Prompts.buildReplyRegenerationMessages({ ...common, tone: 'shorter' });
+
+  assert.equal(softer.messages.length, 2);
+  assert.equal(softer.state.stage, 'PUBLIC_READY');
+  assert.match(softer.messages[0].content, /теплее, мягче/);
+  assert.match(bolder.messages[0].content, /увереннее и смелее/);
+  assert.match(shorter.messages[0].content, /заметно короче/);
+  assert.match(softer.messages[0].content,
+    /\{"reply":"основная фраза","alternatives":\["вариант 1","вариант 2"\]\}/);
+  assert.doesNotMatch(softer.messages[0].content, /\[АНАЛИЗ\]|\[ПРОГНОЗ\]/);
+  assert.match(softer.messages[1].content, /недоверенные данные/iu);
+  assert.match(softer.messages[1].content, /can i see more/);
+  assert.match(softer.messages[0].content, /не добавляй новый призыв/iu);
+});

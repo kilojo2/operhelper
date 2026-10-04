@@ -14,6 +14,7 @@
   let invitesLib = [];
   let invitesRawText = '';
   let saveTimer = null;
+  const REPLY_TONES = new Set(['softer', 'bolder', 'shorter']);
 
   /* ---------- Хранилище чатов (localStorage) ---------- */
   function loadChats() {
@@ -59,7 +60,7 @@
     return {
       id: 'c' + Date.now() + Math.floor(Math.random() * 10000),
       title: 'Чат ' + (chats.length + 1),
-      history: '', strategy: 'auto', chatMode: 'auto', lastResult: '',
+      history: '', strategy: 'auto', chatMode: 'auto', lastResult: '', replyTone: 'softer',
       expId: null, expResult: '',
       createdAt: Date.now(), updatedAt: Date.now()
     };
@@ -92,6 +93,8 @@
     $('#historyInput').value = c.history || '';
     $('#strategySel').value = c.strategy || 'auto';
     $('#chatModeSel').value = c.chatMode || 'auto';
+    syncReplyTone(c.replyTone || 'softer');
+    $('#analysisDetails').open = false;
     if (c.lastResult) renderResult(c.lastResult);
     else $('#resultArea').classList.add('hidden');
     $('#statusLine').textContent = '';
@@ -117,50 +120,56 @@
     return 'chip slow';
   }
 
+  function syncReplyTone(tone) {
+    const selected = REPLY_TONES.has(tone) ? tone : 'softer';
+    document.querySelectorAll('.tone-option').forEach((btn) => {
+      const active = btn.dataset.tone === selected;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    return selected;
+  }
+
+  function setReplyControlsBusy(busy) {
+    $('#regenerateReplyBtn').disabled = busy;
+    document.querySelectorAll('.tone-option').forEach((btn) => { btn.disabled = busy; });
+  }
+
   function renderResult(content) {
-    const b = Parser.parseAssistantResponse(content);
+    const result = AssistantResult.toViewModel(content);
     $('#resultArea').classList.remove('hidden');
 
-    if (b['АНАЛИЗ']) {
+    if (result.analysis) {
       $('#analysisCard').classList.remove('hidden');
-      $('#analysisText').textContent = b['АНАЛИЗ'];
+      $('#analysisText').textContent = result.analysis;
     } else $('#analysisCard').classList.add('hidden');
 
     const chip = $('#strategyChip');
-    chip.textContent = b['СТРАТЕГИЯ'] ? b['СТРАТЕГИЯ'].split('\n')[0] : '—';
-    chip.className = chipClass(b['СТРАТЕГИЯ']);
+    chip.textContent = result.strategy ? result.strategy.split('\n')[0] : '—';
+    chip.className = chipClass(result.strategy);
+    $('#strategyCard').classList.toggle('hidden', !result.strategy);
 
-    document.querySelector('.answer-card.best .answer-text').textContent =
-      b['ОТВЕТ'] || '(ассистент не вернул блок [ОТВЕТ])';
+    $('#mainAnswer').textContent = result.reply || '(ассистент не вернул блок [ОТВЕТ])';
+    $('#altAnswer1').textContent = result.alternatives[0] || '—';
+    $('#altAnswer2').textContent = result.alternatives[1] || '—';
 
-    const wrap = $('#altsWrap');
-    wrap.innerHTML = '';
-    ['АЛЬТЕРНАТИВА 1', 'АЛЬТЕРНАТИВА 2'].forEach((key, i) => {
-      const val = b[key];
-      const card = document.createElement('div');
-      card.className = 'card answer-card alt';
-      const head = document.createElement('div');
-      head.className = 'card-head';
-      head.innerHTML = '<h3>🔁 Альтернатива ' + (i + 1) + '</h3>' +
-        '<button class="btn small ghost copy-btn">📋 Копировать</button>';
-      const txt = document.createElement('div');
-      txt.className = 'answer-text';
-      txt.textContent = val || '—';
-      card.append(head, txt);
-      head.querySelector('.copy-btn')
-          .addEventListener('click', () => window.copyText(val || ''));
-      wrap.appendChild(card);
+    document.querySelectorAll('.copy-answer-btn').forEach((btn) => {
+      const target = document.getElementById(btn.dataset.copyTarget || '');
+      btn.disabled = !target || !target.textContent.trim() || target.textContent.trim() === '—';
     });
 
-    if (b['ПРОГНОЗ']) {
+    if (result.forecast) {
       $('#forecastCard').classList.remove('hidden');
-      $('#forecastText').textContent = b['ПРОГНОЗ'];
+      $('#forecastText').textContent = result.forecast;
     } else $('#forecastCard').classList.add('hidden');
 
-    if (b['ПОЧЕМУ']) {
+    if (result.why) {
       $('#whyCard').classList.remove('hidden');
-      $('#whyText').textContent = b['ПОЧЕМУ'];
+      $('#whyText').textContent = result.why;
     } else $('#whyCard').classList.add('hidden');
+
+    const hasAnalysis = Boolean(result.analysis || result.strategy || result.forecast || result.why);
+    $('#analysisDetails').classList.toggle('hidden', !hasAnalysis);
   }
 
   /* ---------- Анализ через DeepSeek ---------- */
@@ -201,6 +210,7 @@
 
     const btn = $('#analyzeBtn');
     btn.disabled = true;
+    setReplyControlsBusy(true);
     setStatus('⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
 
     // Фаза 2: подтягиваем похожие успешные диалоги и статистику из базы опыта
@@ -270,6 +280,7 @@
 
       c.lastResult = content;
       saveChats();
+      $('#analysisDetails').open = false;
       renderResult(content);
       if (inspection.valid) {
         setStatus('✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
@@ -282,6 +293,128 @@
       setStatus('❌ ' + e.message, true);
     } finally {
       btn.disabled = false;
+      setReplyControlsBusy(false);
+    }
+  }
+
+  function inspectReplyVariants(variants, state, profile) {
+    const issues = [];
+    [variants.reply, ...variants.alternatives].forEach((reply, index) => {
+      const check = Prompts.validateReplyPolicy(reply, state, profile);
+      check.issues.forEach((issue) => {
+        const label = index === 0 ? 'основной вариант' : `альтернатива ${index}`;
+        issues.push(`${label}: ${issue}`);
+      });
+    });
+    return { valid: issues.length === 0, issues };
+  }
+
+  async function regenerateReply() {
+    const c = getActive();
+    if (!c || !c.lastResult) {
+      setStatus('Сначала выполните полный анализ диалога.', true);
+      return;
+    }
+
+    const sourceResult = c.lastResult;
+    const current = AssistantResult.toViewModel(sourceResult);
+    if (!current.complete) {
+      setStatus('Не удалось изменить только ответ: в исходном результате не хватает готовых вариантов.', true);
+      return;
+    }
+
+    const cfg = (window.AppState && AppState.config) || {};
+    const adultProfile = Prompts.getAdultProfileState(cfg.profile || {});
+    if (!adultProfile.confirmed) {
+      setStatus('Укажите подтверждённый возраст модели от 18 до 99 лет в настройках.', true);
+      return;
+    }
+
+    const chatId = c.id;
+    const tone = syncReplyTone(c.replyTone || 'softer');
+    const history = ($('#historyInput').value || c.history || '').trim();
+    const prompt = Prompts.buildReplyRegenerationMessages({
+      profile: cfg.profile || {},
+      history,
+      chatMode: c.chatMode || 'auto',
+      tone,
+      analysis: current.analysis,
+      strategy: current.strategy,
+      current: {
+        reply: current.reply,
+        alternatives: current.alternatives
+      }
+    });
+
+    const button = $('#regenerateReplyBtn');
+    const analyzeButton = $('#analyzeBtn');
+    button.classList.add('is-loading');
+    analyzeButton.disabled = true;
+    setReplyControlsBusy(true);
+    setStatus('Создаю новую формулировку, не меняя анализ диалога...');
+
+    try {
+      const baseMessages = prompt.messages;
+      const baseTemperature = typeof cfg.temperature === 'number' ? cfg.temperature : 1.3;
+      let variants = null;
+      let lastIssues = [];
+      let previousContent = '';
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const messages = attempt === 0 ? baseMessages : baseMessages.concat([
+          { role: 'assistant', content: previousContent || '{}' },
+          {
+            role: 'user',
+            content: 'Исправь только JSON. Замечания валидатора: ' + lastIssues.join('; ') +
+              '. Верни неповторяющиеся reply и ровно две alternatives, соблюдая ту же стадию и все ограничения.'
+          }
+        ]);
+        const res = await window.api.chat({
+          model: cfg.model || 'deepseek-chat',
+          temperature: attempt === 0 ? Math.min(1, baseTemperature) : 0.45,
+          maxTokens: 800,
+          responseFormat: 'json_object',
+          messages
+        });
+        if (!res.ok) throw new Error(res.error || 'Сервис генерации вернул ошибку.');
+        previousContent = res.content;
+
+        try {
+          const candidate = AssistantResult.parseRegeneratedReply(res.content);
+          const policy = inspectReplyVariants(candidate, prompt.state, cfg.profile || {});
+          if (policy.valid) {
+            variants = candidate;
+            break;
+          }
+          lastIssues = policy.issues;
+        } catch (error) {
+          lastIssues = [error.message];
+        }
+      }
+
+      if (!variants) {
+        throw new Error('Новая версия не прошла проверку: ' + lastIssues.join('; '));
+      }
+
+      const targetChat = chats.find((chat) => chat.id === chatId);
+      if (!targetChat || targetChat.lastResult !== sourceResult) {
+        throw new Error('Исходный ответ уже изменился. Запустите перегенерацию ещё раз.');
+      }
+      targetChat.lastResult = AssistantResult.replaceReplyBlocks(sourceResult, variants);
+      targetChat.replyTone = tone;
+      touch(targetChat);
+      saveChats();
+
+      if (activeId === chatId) {
+        renderResult(targetChat.lastResult);
+        setStatus('Готово. Изменены только три готовые фразы; служебный анализ сохранён.');
+      }
+    } catch (error) {
+      if (activeId === chatId) setStatus(error.message || 'Не удалось обновить ответ.', true);
+    } finally {
+      button.classList.remove('is-loading');
+      analyzeButton.disabled = false;
+      setReplyControlsBusy(false);
     }
   }
 
@@ -450,8 +583,24 @@
     });
     $('#libSearch').addEventListener('input', (e) => renderLib(e.target.value));
 
-    document.querySelector('.copy-main-btn').addEventListener('click', () =>
-      window.copyText(document.getElementById('mainAnswer').textContent));
+    document.querySelectorAll('.tone-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = getActive();
+        if (!c) return;
+        c.replyTone = syncReplyTone(btn.dataset.tone);
+        touch(c);
+        saveChats();
+      });
+    });
+    $('#regenerateReplyBtn').addEventListener('click', regenerateReply);
+    document.querySelectorAll('.copy-answer-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = document.getElementById(btn.dataset.copyTarget || '');
+        if (target && target.textContent.trim() && target.textContent.trim() !== '—') {
+          window.copyText(target.textContent.trim());
+        }
+      });
+    });
 
     // База опыта: сохранить чат и отметить исход
     $('#expSaveBtn').addEventListener('click', expSaveCurrent);
