@@ -283,6 +283,13 @@ select option { background: var(--surface-solid); color: var(--text); }
 .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .controls-row select { flex: 1 1 210px; }
 #analyzeBtn { min-width: 230px; }
+.generation-actions { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; }
+.first-message-btn {
+  min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--text-soft); border-color: rgba(77,226,208,.18); background: rgba(77,226,208,.045);
+}
+.first-message-btn:hover { color: #dffffa; border-color: rgba(77,226,208,.36); background: rgba(77,226,208,.08); }
+.first-message-btn.is-loading .button-icon { animation: reply-spin .8s linear infinite; }
 #statusLine { min-height: 16px; color: var(--ok); font-size: 11.5px; }
 #statusLine.err, .err { color: var(--danger) !important; }
 .ok { color: var(--ok) !important; }
@@ -565,7 +572,8 @@ input[type="range"] { height: 20px; padding: 0; accent-color: var(--accent); }
   .card-head { align-items: flex-start; flex-wrap: wrap; }
   #historyInput { min-height: 150px; }
   .controls-row, .key-line, .music-btns, .modal-btns { flex-direction: column; align-items: stretch; }
-  #analyzeBtn { min-width: 0; width: 100%; }
+  .generation-actions { flex-direction: column; align-items: stretch; }
+  #analyzeBtn, .first-message-btn { min-width: 0; width: 100%; }
   .controls-row select { width: 100%; }
   .response-studio-head { gap: 13px; }
   .response-studio-title h2 { font-size: 20px; }

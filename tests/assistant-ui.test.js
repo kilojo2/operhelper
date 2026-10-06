@@ -74,3 +74,13 @@ test('continuation generation commits the appended history only after a successf
   assert.match(assistant, /c\.sentReplyDraft\s*=\s*value/);
   assert.match(assistant, /e\.preventDefault\(\);[\s\S]*continueConversation\(\)/);
 });
+
+test('assistant can generate a first message without pasted history', () => {
+  assert.match(html, /id="generateFirstMessageBtn"/);
+  assert.match(html, /Первое сообщение/);
+  assert.match(css, /\.first-message-btn/);
+  assert.match(assistant, /function generateOpeningMessage\(\)/);
+  assert.match(assistant, /historyOverride:\s*''\s*,\s*opening:\s*true/);
+  assert.match(assistant, /Prompts\.buildOpeningUserPrompt\(\)/);
+  assert.match(assistant, /!hist\s*&&\s*!opts\.opening/);
+});

@@ -94,6 +94,15 @@ test('user prompt передаёт выбранный режим и машинн
   assert.match(userPrompt, /предварительная стадия: PRIVATE_ACTIVE/);
 });
 
+test('первое сообщение запускает знакомство без истории и раннего CTA', () => {
+  const prompt = Prompts.buildOpeningUserPrompt();
+  assert.match(prompt, /ПЕРВОЕ СООБЩЕНИЕ НОВОМУ ПОЛЬЗОВАТЕЛЮ/);
+  assert.match(prompt, /PUBLIC_WARMUP/);
+  assert.match(prompt, /стратегия: CONNECT/);
+  assert.match(prompt, /не упоминай приват, шоу, токены, цену/);
+  assert.match(prompt, /истории и данных о пользователе пока нет/);
+});
+
 test('перегенерация меняет только фразы и задаёт строгий JSON-контракт', () => {
   const common = {
     profile: {

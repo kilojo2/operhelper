@@ -126,7 +126,14 @@
             <option value="private">🔒 Приват уже идёт</option>
             <option value="aftercare">🌙 Завершение / aftercare</option>
           </select>
-          <button id="analyzeBtn" class="btn primary">✨ Проанализировать<small>Ctrl+Enter</small></button>
+          <div class="generation-actions">
+            <button id="generateFirstMessageBtn" type="button" class="btn ghost first-message-btn"
+              title="Создать первое сообщение, когда переписки ещё нет">
+              <svg class="button-icon" aria-hidden="true"><use href="#nav-chat"></use></svg>
+              <span>Первое сообщение</span>
+            </button>
+            <button id="analyzeBtn" class="btn primary">✨ Проанализировать<small>Ctrl+Enter</small></button>
+          </div>
         </div>
         <div id="statusLine"></div>
       </div>
@@ -212,9 +219,9 @@
             <div>
               <span class="answer-kicker">Следующий ход</span>
               <h3 id="continuationTitle">Продолжить этот диалог</h3>
-              <p>Прошлая история уже сохранена. Добавьте только новый обмен сообщениями.</p>
+              <p id="continuationDescription">Прошлая история уже сохранена. Добавьте только новый обмен сообщениями.</p>
             </div>
-            <span class="chip subtle">Контекст сохранён</span>
+            <span id="continuationContextChip" class="chip subtle">Контекст сохранён</span>
           </div>
           <div class="continuation-grid">
             <label class="continuation-field">

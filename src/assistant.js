@@ -143,6 +143,7 @@
     $('#historyInput').readOnly = busy;
     $('#strategySel').disabled = busy;
     $('#chatModeSel').disabled = busy;
+    $('#generateFirstMessageBtn').disabled = busy;
   }
 
   function renderResult(content) {
@@ -170,6 +171,17 @@
       $('#sentReplyInput').value = sentDraft || '';
       $('#newUserMessageInput').value = typeof c.newMessageDraft === 'string'
         ? c.newMessageDraft : '';
+
+      const isOpening = !String(c.history || '').trim();
+      $('#continuationTitle').textContent = isOpening
+        ? 'Продолжить после первого ответа'
+        : 'Продолжить этот диалог';
+      $('#continuationDescription').textContent = isOpening
+        ? 'Первое сообщение готово. Когда пользователь ответит, вставьте только его новую реплику.'
+        : 'Прошлая история уже сохранена. Добавьте только новый обмен сообщениями.';
+      $('#continuationContextChip').textContent = isOpening
+        ? 'Начало диалога'
+        : 'Контекст сохранён';
     }
 
     document.querySelectorAll('.copy-answer-btn').forEach((btn) => {
@@ -205,7 +217,10 @@
     const chatId = c.id;
     const hist = (opts.historyOverride !== undefined
       ? opts.historyOverride : $('#historyInput').value).trim();
-    if (!hist) { setStatus('⚠️ Сначала вставьте историю чата', true); return false; }
+    if (!hist && !opts.opening) {
+      setStatus('⚠️ Сначала вставьте историю чата или нажмите «Первое сообщение»', true);
+      return false;
+    }
 
     if (!opts.commitHistoryOnSuccess) c.history = hist;
     c.strategy = $('#strategySel').value;
@@ -234,32 +249,40 @@
     btn.disabled = true;
     setAnalysisInputsBusy(true);
     setReplyControlsBusy(true);
-    setStatus(opts.continuation
-      ? 'Учитываю сохранённую историю и новое сообщение пользователя...'
-      : '⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
+    setStatus(opts.opening
+      ? 'Создаю естественное первое сообщение в стиле модели...'
+      : opts.continuation
+        ? 'Учитываю сохранённую историю и новое сообщение пользователя...'
+        : '⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
 
     // Фаза 2: подтягиваем похожие успешные диалоги и статистику из базы опыта
     let expBlock = '';
     let expCount = 0;
     try {
-      const stage = Prompts.analyzeConversation(hist, c.chatMode).stage;
-      const ctx = await window.api.expExamples({
-        history: hist,
-        strategy: c.strategy,
-        stage,
-        chatMode: c.chatMode,
-        profileName: String(cfg.profile && cfg.profile.name || '')
-      });
-      if (ctx && ctx.ok) {
-        expCount = ctx.count || 0;
-        expBlock = [ctx.examplesBlock, ctx.statsBlock, ctx.antiBlock]
-          .filter(Boolean).join('\n\n');
+      if (opts.opening) {
+        expBlock = '';
+      } else {
+        const stage = Prompts.analyzeConversation(hist, c.chatMode).stage;
+        const ctx = await window.api.expExamples({
+          history: hist,
+          strategy: c.strategy,
+          stage,
+          chatMode: c.chatMode,
+          profileName: String(cfg.profile && cfg.profile.name || '')
+        });
+        if (ctx && ctx.ok) {
+          expCount = ctx.count || 0;
+          expBlock = [ctx.examplesBlock, ctx.statsBlock, ctx.antiBlock]
+            .filter(Boolean).join('\n\n');
+        }
       }
     } catch { /* база опыта недоступна — анализ всё равно выполняется */ }
 
     try {
       const systemPrompt = Prompts.buildSystemPrompt(cfg.profile, invitesRawText);
-      const userPrompt = Prompts.buildUserPrompt(hist, c.strategy, expBlock, c.chatMode);
+      const userPrompt = opts.opening
+        ? Prompts.buildOpeningUserPrompt()
+        : Prompts.buildUserPrompt(hist, c.strategy, expBlock, c.chatMode);
       const baseMessages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -275,7 +298,8 @@
         return false;
       }
 
-      const conversationState = Prompts.analyzeConversation(hist, c.chatMode);
+      const conversationState = Prompts.analyzeConversation(
+        hist, opts.opening ? 'public' : c.chatMode);
       function inspectDraft(content) {
         const format = Parser.validateAssistantResponse(content);
         const policy = Prompts.validateReplyPolicy(
@@ -294,7 +318,10 @@
           setStatus('⏳ Проверяю структуру и мягкость ответа, исправляю замечания...');
         }
         const correction = `Исправь предыдущий черновик. Замечания валидатора: ${inspection.issues.join('; ')}. ` +
-          'Верни все обязательные блоки, сохрани стадию и голос модели, убери давление и недопустимый CTA. Ничего не пиши вне блоков.';
+          (opts.opening
+            ? 'Это первое сообщение без истории: сохрани CONNECT и PUBLIC_WARMUP, не упоминай приват, оплату или неизвестные факты. '
+            : 'Сохрани стадию и голос модели, убери давление и недопустимый CTA. ') +
+          'Верни все обязательные блоки. Ничего не пиши вне блоков.';
         res = await window.api.chat({
           model: cfg.model || 'deepseek-chat',
           temperature: Math.min(0.8, temperature),
@@ -334,10 +361,12 @@
         $('#analysisDetails').open = false;
         renderResult(content);
         if (inspection.valid) {
-          const message = opts.continuation
-            ? 'Готово. Новое сообщение добавлено к сохранённой истории, следующий ответ подготовлен.'
-            : '✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
-              (expCount ? ` (опыт: подмешано примеров — ${expCount})` : '');
+          const message = opts.opening
+            ? 'Готово. Первое сообщение подготовлено в стиле модели — выберите и скопируйте вариант.'
+            : opts.continuation
+              ? 'Готово. Новое сообщение добавлено к сохранённой истории, следующий ответ подготовлен.'
+              : '✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
+                (expCount ? ` (опыт: подмешано примеров — ${expCount})` : '');
           setStatus(message);
         } else {
           setStatus('⚠️ Ответ создан, но автоматическая проверка нашла: ' +
@@ -352,6 +381,25 @@
       btn.disabled = false;
       setAnalysisInputsBusy(false);
       setReplyControlsBusy(false);
+    }
+  }
+
+  async function generateOpeningMessage() {
+    const c = getActive();
+    if (!c) return false;
+
+    if ($('#historyInput').value.trim()) {
+      setStatus('Первое сообщение доступно только для нового диалога без истории.', true);
+      $('#historyInput').focus();
+      return false;
+    }
+
+    const button = $('#generateFirstMessageBtn');
+    button.classList.add('is-loading');
+    try {
+      return await analyze({ historyOverride: '', opening: true });
+    } finally {
+      button.classList.remove('is-loading');
     }
   }
 
@@ -680,6 +728,7 @@
     });
 
     $('#analyzeBtn').addEventListener('click', analyze);
+    $('#generateFirstMessageBtn').addEventListener('click', generateOpeningMessage);
     $('#historyInput').addEventListener('input', () => {
       const c = getActive();
       if (!c) return;
