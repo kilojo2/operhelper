@@ -12,6 +12,44 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Parser) {
   'use strict';
 
+  const MAX_TURN_MESSAGE_LENGTH = 4000;
+
+  function normalizeMultiline(value) {
+    return typeof value === 'string'
+      ? value.replace(/\r\n?|\u2028|\u2029/g, '\n').trim()
+      : '';
+  }
+
+  function formatTurnMessage(value, label) {
+    if (typeof value !== 'string') {
+      throw new TypeError(`${label} must be a string`);
+    }
+
+    const normalized = normalizeMultiline(value);
+    if (!normalized) {
+      throw new TypeError(`${label} must not be empty`);
+    }
+    if (normalized.length > MAX_TURN_MESSAGE_LENGTH) {
+      throw new RangeError(`${label} must not exceed ${MAX_TURN_MESSAGE_LENGTH} characters`);
+    }
+
+    const lines = normalized.split('\n');
+    return lines[0] + lines.slice(1).map((line) => `\n  ${line}`).join('');
+  }
+
+  /**
+   * Appends the message sent by the model and the user's next message to a
+   * transcript. Continuation lines are indented so text such as "user: ..."
+   * inside a multiline message cannot be mistaken for a new transcript role.
+   */
+  function appendConversationTurn(history, sentReply, userMessage) {
+    const normalizedHistory = normalizeMultiline(history);
+    const modelLine = `model: ${formatTurnMessage(sentReply, 'sentReply')}`;
+    const userLine = `user: ${formatTurnMessage(userMessage, 'userMessage')}`;
+    const turn = `${modelLine}\n${userLine}`;
+    return normalizedHistory ? `${normalizedHistory}\n${turn}` : turn;
+  }
+
   const REPLY_BLOCKS = ['ОТВЕТ', 'АЛЬТЕРНАТИВА 1', 'АЛЬТЕРНАТИВА 2'];
   const MAX_REPLY_LENGTH = 420;
 
@@ -176,11 +214,13 @@
   }
 
   return {
+    appendConversationTurn,
     toViewModel,
     validateReplyVariants,
     parseRegeneratedReply,
     replaceReplyBlocks,
     REPLY_BLOCKS: REPLY_BLOCKS.slice(),
-    MAX_REPLY_LENGTH
+    MAX_REPLY_LENGTH,
+    MAX_TURN_MESSAGE_LENGTH
   };
 });

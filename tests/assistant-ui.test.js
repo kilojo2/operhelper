@@ -47,3 +47,30 @@ test('new answer layout has desktop and mobile presentation rules', () => {
   assert.match(css, /\.analysis-details\[open\] \.details-chevron/);
   assert.match(css, /@media \(max-width: 540px\)[\s\S]*\.regenerate-reply-btn \{ width: 100%; \}/);
 });
+
+test('continuation UI accepts the sent reply and only the new user message', () => {
+  const card = html.match(/<section id="continuationCard"[\s\S]*?<\/section>/)?.[0] || '';
+  assert.match(card, /id="sentReplyInput"/);
+  assert.match(card, /id="newUserMessageInput"/);
+  assert.match(card, /id="continueChatBtn"/);
+  assert.match(card, /Прошлая история уже сохранена/);
+  assert.match(card, /Всю переписку повторно вставлять не нужно/);
+  assert.match(css, /\.continuation-grid/);
+  assert.match(css, /\.continue-chat-btn/);
+});
+
+test('continuation generation commits the appended history only after a successful response', () => {
+  assert.match(assistant, /function continueConversation\(\)/);
+  assert.match(assistant,
+    /AssistantResult\.appendConversationTurn\(baseHistory, sentReply, userMessage\)/);
+  assert.match(assistant, /historyOverride:\s*nextHistory/);
+  assert.match(assistant, /commitHistoryOnSuccess:\s*true/);
+  assert.match(assistant, /targetChat\.history\s*!==\s*opts\.expectedHistory/);
+  assert.ok(
+    assistant.indexOf('targetChat.history !== opts.expectedHistory') <
+      assistant.indexOf('targetChat.history = hist'),
+    'history snapshot must be checked before commit'
+  );
+  assert.match(assistant, /c\.sentReplyDraft\s*=\s*value/);
+  assert.match(assistant, /e\.preventDefault\(\);[\s\S]*continueConversation\(\)/);
+});

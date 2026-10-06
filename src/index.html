@@ -47,6 +47,9 @@
   <symbol id="ui-chevron" viewBox="0 0 24 24">
     <path d="m7 10 5 5 5-5"/>
   </symbol>
+  <symbol id="ui-arrow-right" viewBox="0 0 24 24">
+    <path d="M5 12h14M14 7l5 5-5 5"/>
+  </symbol>
 </svg>
 
 <header id="titlebar">
@@ -203,6 +206,38 @@
             <div id="altAnswer2" class="answer-text"></div>
           </article>
         </div>
+
+        <section id="continuationCard" class="card continuation-card" aria-labelledby="continuationTitle">
+          <div class="continuation-head">
+            <div>
+              <span class="answer-kicker">Следующий ход</span>
+              <h3 id="continuationTitle">Продолжить этот диалог</h3>
+              <p>Прошлая история уже сохранена. Добавьте только новый обмен сообщениями.</p>
+            </div>
+            <span class="chip subtle">Контекст сохранён</span>
+          </div>
+          <div class="continuation-grid">
+            <label class="continuation-field">
+              <span>Что вы отправили пользователю</span>
+              <textarea id="sentReplyInput" rows="3" maxlength="4000" spellcheck="false"
+                placeholder="Фраза, которую вы действительно отправили"></textarea>
+              <small>Рекомендуемая фраза уже подставлена; скопированная альтернатива заменит её автоматически.</small>
+            </label>
+            <label class="continuation-field continuation-field-new">
+              <span>Новое сообщение пользователя</span>
+              <textarea id="newUserMessageInput" rows="3" maxlength="4000" spellcheck="false"
+                placeholder="Вставьте только новое сообщение пользователя"></textarea>
+              <small>Всю переписку повторно вставлять не нужно.</small>
+            </label>
+          </div>
+          <div class="continuation-actions">
+            <span class="hint">Ctrl+Enter — сгенерировать следующий ответ</span>
+            <button id="continueChatBtn" type="button" class="btn primary continue-chat-btn">
+              <span>Сгенерировать следующий ответ</span>
+              <svg class="button-icon" aria-hidden="true"><use href="#ui-arrow-right"></use></svg>
+            </button>
+          </div>
+        </section>
 
         <details id="analysisDetails" class="analysis-details">
           <summary>

@@ -349,6 +349,30 @@ select option { background: var(--surface-solid); color: var(--text); }
 .alts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .alts-grid .answer-card { min-height: 138px; justify-content: space-between; }
 .alts-grid .answer-text { color: var(--text-soft); font-size: 14px; }
+.continuation-card {
+  margin-top: 3px; padding: 20px;
+  border-color: rgba(124,140,255,.24);
+  background: linear-gradient(135deg, rgba(23,31,53,.88), rgba(13,19,34,.82));
+}
+.continuation-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.continuation-head > div { min-width: 0; }
+.continuation-head h3 { margin-top: 4px; color: var(--text); font-size: 16px; letter-spacing: -.25px; }
+.continuation-head p { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.continuation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.continuation-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.continuation-field > span {
+  color: var(--text-soft); font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .48px;
+}
+.continuation-field textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+.continuation-field small { min-height: 30px; color: var(--muted); font-size: 9.5px; line-height: 1.45; }
+.continuation-field-new textarea {
+  border-color: rgba(124,140,255,.34);
+  background: rgba(9,14,27,.82);
+}
+.continuation-field-new textarea:focus { border-color: rgba(124,140,255,.78); }
+.continuation-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.continue-chat-btn { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+.continue-chat-btn.is-loading .button-icon { animation: reply-spin .8s linear infinite; }
 .analysis-details {
   border: 1px solid var(--border); border-radius: 14px;
   background: rgba(10,15,28,.48); overflow: hidden;
@@ -499,7 +523,7 @@ input[type="range"] { height: 20px; padding: 0; accent-color: var(--accent); }
   .chat-item { flex: 0 0 150px; }
   .chat-pane-footer { display: none; }
   #chatWorkArea { padding: 18px 14px 36px; }
-  .alts-grid, .field-grid, .field-grid:first-of-type { grid-template-columns: 1fr; }
+  .alts-grid, .continuation-grid, .field-grid, .field-grid:first-of-type { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #musicGrid { grid-template-columns: minmax(0, 1fr); }
 }
@@ -556,6 +580,11 @@ input[type="range"] { height: 20px; padding: 0; accent-color: var(--accent); }
   .copy-answer-btn { width: 34px; min-width: 34px; padding-inline: 8px; }
   .answer-text { font-size: 14.5px; }
   .alternatives-heading span { display: none; }
+  .continuation-card { padding: 15px; }
+  .continuation-head { flex-direction: column; gap: 9px; }
+  .continuation-field small { min-height: 0; }
+  .continuation-actions { align-items: stretch; flex-direction: column; }
+  .continue-chat-btn { width: 100%; }
   .analysis-details summary { padding-inline: 12px; }
   .analysis-summary-copy small { max-width: 250px; }
   .row-gap { align-items: stretch; flex-direction: column; }

@@ -61,6 +61,7 @@
       id: 'c' + Date.now() + Math.floor(Math.random() * 10000),
       title: 'Чат ' + (chats.length + 1),
       history: '', strategy: 'auto', chatMode: 'auto', lastResult: '', replyTone: 'softer',
+      sentReplyDraft: '', newMessageDraft: '',
       expId: null, expResult: '',
       createdAt: Date.now(), updatedAt: Date.now()
     };
@@ -132,7 +133,16 @@
 
   function setReplyControlsBusy(busy) {
     $('#regenerateReplyBtn').disabled = busy;
+    $('#continueChatBtn').disabled = busy;
+    $('#sentReplyInput').disabled = busy;
+    $('#newUserMessageInput').disabled = busy;
     document.querySelectorAll('.tone-option').forEach((btn) => { btn.disabled = busy; });
+  }
+
+  function setAnalysisInputsBusy(busy) {
+    $('#historyInput').readOnly = busy;
+    $('#strategySel').disabled = busy;
+    $('#chatModeSel').disabled = busy;
   }
 
   function renderResult(content) {
@@ -152,6 +162,15 @@
     $('#mainAnswer').textContent = result.reply || '(ассистент не вернул блок [ОТВЕТ])';
     $('#altAnswer1').textContent = result.alternatives[0] || '—';
     $('#altAnswer2').textContent = result.alternatives[1] || '—';
+
+    const c = getActive();
+    if (c) {
+      const sentDraft = typeof c.sentReplyDraft === 'string' && c.sentReplyDraft.trim()
+        ? c.sentReplyDraft : result.reply;
+      $('#sentReplyInput').value = sentDraft || '';
+      $('#newUserMessageInput').value = typeof c.newMessageDraft === 'string'
+        ? c.newMessageDraft : '';
+    }
 
     document.querySelectorAll('.copy-answer-btn').forEach((btn) => {
       const target = document.getElementById(btn.dataset.copyTarget || '');
@@ -179,13 +198,16 @@
     el.className = isErr ? 'err' : '';
   }
 
-  async function analyze() {
+  async function analyze(options) {
+    const opts = options && typeof options.historyOverride === 'string' ? options : {};
     const c = getActive();
-    if (!c) return;
-    const hist = $('#historyInput').value.trim();
-    if (!hist) { setStatus('⚠️ Сначала вставьте историю чата', true); return; }
+    if (!c) return false;
+    const chatId = c.id;
+    const hist = (opts.historyOverride !== undefined
+      ? opts.historyOverride : $('#historyInput').value).trim();
+    if (!hist) { setStatus('⚠️ Сначала вставьте историю чата', true); return false; }
 
-    c.history = hist;
+    if (!opts.commitHistoryOnSuccess) c.history = hist;
     c.strategy = $('#strategySel').value;
     c.chatMode = $('#chatModeSel').value;
     touch(c); // F-09: время последней активности для автоочистки
@@ -196,7 +218,7 @@
     if (!adultProfile.confirmed) {
       setStatus('❌ Укажите подтверждённый возраст модели от 18 до 99 лет в настройках', true);
       if (window.switchTab) window.switchTab('settings');
-      return;
+      return false;
     }
     // F-01: признак наличия ключа — cfg.hasKey (сам ключ интерфейсу недоступен).
     // В веб-версии ключ может задаваться переменной окружения DEEPSEEK_API_KEY на
@@ -205,13 +227,16 @@
     if (!isWeb && !cfg.hasKey && !(cfg.apiKey && String(cfg.apiKey).trim())) {
       setStatus('❌ Нет API-ключа DeepSeek — откройте вкладку «Настройки»', true);
       if (window.switchTab) window.switchTab('settings');
-      return;
+      return false;
     }
 
     const btn = $('#analyzeBtn');
     btn.disabled = true;
+    setAnalysisInputsBusy(true);
     setReplyControlsBusy(true);
-    setStatus('⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
+    setStatus(opts.continuation
+      ? 'Учитываю сохранённую историю и новое сообщение пользователя...'
+      : '⏳ Ассистент изучает юзера, продумывает его возможные ответы и выбирает лучшую линию...');
 
     // Фаза 2: подтягиваем похожие успешные диалоги и статистику из базы опыта
     let expBlock = '';
@@ -245,7 +270,10 @@
         temperature,
         messages: baseMessages
       });
-      if (!res.ok) { setStatus('❌ ' + res.error, true); return; }
+      if (!res.ok) {
+        if (activeId === chatId) setStatus('❌ ' + res.error, true);
+        return false;
+      }
 
       const conversationState = Prompts.analyzeConversation(hist, c.chatMode);
       function inspectDraft(content) {
@@ -262,7 +290,9 @@
       let content = res.content;
       let inspection = inspectDraft(content);
       if (!inspection.valid) {
-        setStatus('⏳ Проверяю структуру и мягкость ответа, исправляю замечания...');
+        if (activeId === chatId) {
+          setStatus('⏳ Проверяю структуру и мягкость ответа, исправляю замечания...');
+        }
         const correction = `Исправь предыдущий черновик. Замечания валидатора: ${inspection.issues.join('; ')}. ` +
           'Верни все обязательные блоки, сохрани стадию и голос модели, убери давление и недопустимый CTA. Ничего не пиши вне блоков.';
         res = await window.api.chat({
@@ -273,27 +303,111 @@
             { role: 'user', content: correction }
           ])
         });
-        if (!res.ok) { setStatus('❌ ' + res.error, true); return; }
+        if (!res.ok) {
+          if (activeId === chatId) setStatus('❌ ' + res.error, true);
+          return false;
+        }
         content = res.content;
         inspection = inspectDraft(content);
       }
 
-      c.lastResult = content;
-      saveChats();
-      $('#analysisDetails').open = false;
-      renderResult(content);
-      if (inspection.valid) {
-        setStatus('✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
-          (expCount ? ` (опыт: подмешано примеров — ${expCount})` : ''));
-      } else {
-        setStatus('⚠️ Ответ создан, но автоматическая проверка нашла: ' +
-          inspection.issues.join('; ') + '. Проверьте текст перед отправкой.', true);
+      const targetChat = chats.find((chat) => chat.id === chatId);
+      if (!targetChat) return false;
+      if (opts.commitHistoryOnSuccess) {
+        if (targetChat.history !== opts.expectedHistory ||
+            targetChat.lastResult !== opts.expectedResult) {
+          throw new Error('Диалог изменился во время генерации. Проверьте историю и повторите запрос.');
+        }
+        targetChat.history = hist;
       }
+      targetChat.lastResult = content;
+      const nextResult = AssistantResult.toViewModel(content);
+      targetChat.sentReplyDraft = nextResult.reply || '';
+      targetChat.newMessageDraft = '';
+      touch(targetChat);
+      saveChats();
+      if (activeId === chatId) {
+        if (opts.commitHistoryOnSuccess) {
+          $('#historyInput').value = hist;
+          $('#historyInput').scrollTop = $('#historyInput').scrollHeight;
+        }
+        $('#analysisDetails').open = false;
+        renderResult(content);
+        if (inspection.valid) {
+          const message = opts.continuation
+            ? 'Готово. Новое сообщение добавлено к сохранённой истории, следующий ответ подготовлен.'
+            : '✅ Готово! Ответ проверен по стадии диалога и профилю модели.' +
+              (expCount ? ` (опыт: подмешано примеров — ${expCount})` : '');
+          setStatus(message);
+        } else {
+          setStatus('⚠️ Ответ создан, но автоматическая проверка нашла: ' +
+            inspection.issues.join('; ') + '. Проверьте текст перед отправкой.', true);
+        }
+      }
+      return true;
     } catch (e) {
-      setStatus('❌ ' + e.message, true);
+      if (activeId === chatId) setStatus('❌ ' + e.message, true);
+      return false;
     } finally {
       btn.disabled = false;
+      setAnalysisInputsBusy(false);
       setReplyControlsBusy(false);
+    }
+  }
+
+  async function continueConversation() {
+    const c = getActive();
+    if (!c || !c.lastResult) {
+      setStatus('Сначала выполните полный анализ диалога.', true);
+      return false;
+    }
+
+    const sentReply = $('#sentReplyInput').value.trim();
+    const userMessage = $('#newUserMessageInput').value.trim();
+    if (!sentReply) {
+      setStatus('Укажите фразу, которую вы отправили пользователю.', true);
+      $('#sentReplyInput').focus();
+      return false;
+    }
+    if (!userMessage) {
+      setStatus('Вставьте новое сообщение пользователя.', true);
+      $('#newUserMessageInput').focus();
+      return false;
+    }
+    if (sentReply.length > AssistantResult.MAX_TURN_MESSAGE_LENGTH ||
+        userMessage.length > AssistantResult.MAX_TURN_MESSAGE_LENGTH) {
+      setStatus('Каждое новое сообщение должно быть короче 4000 символов.', true);
+      return false;
+    }
+
+    const historySnapshot = String(c.history || $('#historyInput').value || '');
+    const baseHistory = historySnapshot.trim();
+    const baseResult = c.lastResult;
+    let nextHistory;
+    try {
+      nextHistory = AssistantResult.appendConversationTurn(baseHistory, sentReply, userMessage);
+    } catch (error) {
+      setStatus('Не удалось добавить новый ход диалога: ' + error.message, true);
+      return false;
+    }
+
+    c.sentReplyDraft = sentReply;
+    c.newMessageDraft = userMessage;
+    touch(c);
+    saveChats();
+
+    const button = $('#continueChatBtn');
+    button.classList.add('is-loading');
+    try {
+      return await analyze({
+        historyOverride: nextHistory,
+        commitHistoryOnSuccess: true,
+        continuation: true,
+        expectedHistory: historySnapshot,
+        expectedResult: baseResult
+      });
+    } finally {
+      button.classList.remove('is-loading');
     }
   }
 
@@ -350,6 +464,7 @@
     const analyzeButton = $('#analyzeBtn');
     button.classList.add('is-loading');
     analyzeButton.disabled = true;
+    setAnalysisInputsBusy(true);
     setReplyControlsBusy(true);
     setStatus('Создаю новую формулировку, не меняя анализ диалога...');
 
@@ -402,6 +517,7 @@
       }
       targetChat.lastResult = AssistantResult.replaceReplyBlocks(sourceResult, variants);
       targetChat.replyTone = tone;
+      targetChat.sentReplyDraft = variants.reply;
       touch(targetChat);
       saveChats();
 
@@ -414,6 +530,7 @@
     } finally {
       button.classList.remove('is-loading');
       analyzeButton.disabled = false;
+      setAnalysisInputsBusy(false);
       setReplyControlsBusy(false);
     }
   }
@@ -593,11 +710,40 @@
       });
     });
     $('#regenerateReplyBtn').addEventListener('click', regenerateReply);
+    $('#continueChatBtn').addEventListener('click', continueConversation);
+    $('#sentReplyInput').addEventListener('input', () => {
+      const c = getActive();
+      if (!c) return;
+      c.sentReplyDraft = $('#sentReplyInput').value;
+      touch(c);
+      scheduleSaveChats();
+    });
+    $('#newUserMessageInput').addEventListener('input', () => {
+      const c = getActive();
+      if (!c) return;
+      c.newMessageDraft = $('#newUserMessageInput').value;
+      touch(c);
+      scheduleSaveChats();
+    });
+    $('#newUserMessageInput').addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        continueConversation();
+      }
+    });
     document.querySelectorAll('.copy-answer-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const target = document.getElementById(btn.dataset.copyTarget || '');
         if (target && target.textContent.trim() && target.textContent.trim() !== '—') {
-          window.copyText(target.textContent.trim());
+          const value = target.textContent.trim();
+          window.copyText(value);
+          const c = getActive();
+          if (c) {
+            c.sentReplyDraft = value;
+            $('#sentReplyInput').value = value;
+            touch(c);
+            saveChats();
+          }
         }
       });
     });

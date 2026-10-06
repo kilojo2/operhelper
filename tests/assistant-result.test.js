@@ -84,3 +84,69 @@ test('refuses to rewrite an incomplete source response', () => {
     reply: 'New reply', alternatives: ['One', 'Two']
   }), /АЛЬТЕРНАТИВА 1/);
 });
+
+test('appends a model reply and the next user message to existing history', () => {
+  const result = AssistantResult.appendConversationTurn(
+    'user: hello\r\nmodel: hey there  ',
+    '  How are you? ',
+    ' I am great!  '
+  );
+
+  assert.equal(result, [
+    'user: hello',
+    'model: hey there',
+    'model: How are you?',
+    'user: I am great!'
+  ].join('\n'));
+});
+
+test('creates a complete turn when conversation history is empty', () => {
+  assert.equal(
+    AssistantResult.appendConversationTurn('', 'Sent reply', 'New message'),
+    'model: Sent reply\nuser: New message'
+  );
+});
+
+test('indents multiline continuations so they cannot look like new roles', () => {
+  const result = AssistantResult.appendConversationTurn(
+    '  ',
+    'first line\r\nuser: quoted line\rthird line',
+    'answer line\u2028model: quoted reply\u2029last line'
+  );
+
+  assert.equal(result, [
+    'model: first line',
+    '  user: quoted line',
+    '  third line',
+    'user: answer line',
+    '  model: quoted reply',
+    '  last line'
+  ].join('\n'));
+});
+
+test('validates empty, non-string, and oversized turn messages', () => {
+  assert.throws(
+    () => AssistantResult.appendConversationTurn('', '   \r\n ', 'Message'),
+    /sentReply must not be empty/
+  );
+  assert.throws(
+    () => AssistantResult.appendConversationTurn('', 'Reply', '\n\t '),
+    /userMessage must not be empty/
+  );
+  assert.throws(
+    () => AssistantResult.appendConversationTurn('', null, 'Message'),
+    /sentReply must be a string/
+  );
+  assert.throws(
+    () => AssistantResult.appendConversationTurn('', 'x'.repeat(4001), 'Message'),
+    /sentReply must not exceed 4000 characters/
+  );
+  assert.throws(
+    () => AssistantResult.appendConversationTurn('', 'Reply', 'x'.repeat(4001)),
+    /userMessage must not exceed 4000 characters/
+  );
+  assert.equal(
+    AssistantResult.appendConversationTurn('', 'x'.repeat(4000), 'y'.repeat(4000)).length,
+    8014
+  );
+});
