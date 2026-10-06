@@ -258,6 +258,7 @@
   function saveMusicVolumes(arr) { window.MusicPresets.saveVolumes(localStorage, arr); }
 
   let youtubeApiPromise = null;
+  let musicPlayerSequence = 0;
   function loadYouTubePlayerApi() {
     if (window.YT && typeof window.YT.Player === 'function') return Promise.resolve(window.YT);
     if (youtubeApiPromise) return youtubeApiPromise;
@@ -342,6 +343,7 @@
         shell.className = 'music-player-shell';
         const fr = document.createElement('iframe');
         fr.className = 'music-frame';
+        fr.id = `music-player-${i + 1}-${++musicPlayerSequence}`;
         fr.title = 'YouTube мини-плеер ' + (i + 1);
         const embedUrl = new URL('https://www.youtube-nocookie.com/embed/' + id);
         embedUrl.searchParams.set('autoplay', '1');
@@ -392,7 +394,7 @@
 
         loadYouTubePlayerApi().then((YT) => {
           if (!shell.isConnected) return;
-          shell.youtubePlayer = new YT.Player(fr, {
+          shell.youtubePlayer = new YT.Player(fr.id, {
             events: {
               onReady(event) {
                 shell.youtubePlayer = event.target;

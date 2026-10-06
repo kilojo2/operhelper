@@ -82,7 +82,8 @@ test('mini player enables YouTube API volume control and renders a slider', () =
   const css = fs.readFileSync(path.join(root, 'src', 'styles.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'src', 'index.html'), 'utf8');
   assert.match(app, /enablejsapi', '1'/);
-  assert.match(app, /new YT\.Player\(fr/);
+  assert.match(app, /fr\.id = `music-player-/);
+  assert.match(app, /new YT\.Player\(fr\.id/);
   assert.match(app, /youtubePlayer\.setVolume\(nextVolume\)/);
   assert.match(app, /class="m-volume" type="range"/);
   assert.match(css, /\.music-volume/);
