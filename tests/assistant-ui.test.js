@@ -84,3 +84,16 @@ test('assistant can generate a first message without pasted history', () => {
   assert.match(assistant, /Prompts\.buildOpeningUserPrompt\(\)/);
   assert.match(assistant, /!hist\s*&&\s*!opts\.opening/);
 });
+
+test('chat list supports accessible inline renaming', () => {
+  assert.match(html, /<symbol id="ui-edit"/);
+  assert.match(html, /id="chatTitle" maxlength="80"/);
+  assert.match(assistant, /const MAX_CHAT_TITLE_LENGTH = 80/);
+  assert.match(assistant, /function startChatRename\(c, item, name, button\)/);
+  assert.match(assistant, /renameBtn\.setAttribute\('aria-label'/);
+  assert.match(assistant, /event\.key === 'Enter'/);
+  assert.match(assistant, /event\.key === 'Escape'/);
+  assert.match(assistant, /input\.addEventListener\('blur', \(\) => finish\(true\)/);
+  assert.match(css, /\.chat-rename-btn/);
+  assert.match(css, /\.chat-rename-input/);
+});

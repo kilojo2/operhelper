@@ -50,6 +50,10 @@
   <symbol id="ui-arrow-right" viewBox="0 0 24 24">
     <path d="M5 12h14M14 7l5 5-5 5"/>
   </symbol>
+  <symbol id="ui-edit" viewBox="0 0 24 24">
+    <path d="M12 20h9"/>
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>
+  </symbol>
 </svg>
 
 <header id="titlebar">
@@ -98,7 +102,7 @@
 
     <div id="chatSession" class="hidden">
       <div id="sessionHeader">
-        <div class="session-identity"><span class="eyebrow">Текущая сессия</span><input id="chatTitle" title="Название чата (имя пользователя)"></div>
+        <div class="session-identity"><span class="eyebrow">Текущая сессия</span><input id="chatTitle" maxlength="80" title="Название чата — нажмите, чтобы изменить"></div>
         <button id="deleteChatBtn" class="btn danger small">Удалить</button>
       </div>
 

@@ -15,6 +15,7 @@
   let invitesRawText = '';
   let saveTimer = null;
   const REPLY_TONES = new Set(['softer', 'bolder', 'shorter']);
+  const MAX_CHAT_TITLE_LENGTH = 80;
 
   /* ---------- Хранилище чатов (localStorage) ---------- */
   function loadChats() {
@@ -56,6 +57,19 @@
   }
   function getActive() { return chats.find(c => c.id === activeId) || null; }
 
+  function normalizeChatTitle(value, fallback) {
+    const title = String(value || '').replace(/\s+/g, ' ').trim();
+    return (title || fallback || 'Без имени').slice(0, MAX_CHAT_TITLE_LENGTH);
+  }
+
+  function commitChatTitle(c, value, syncHeader) {
+    if (!c) return;
+    c.title = normalizeChatTitle(value);
+    touch(c);
+    saveChats();
+    if (syncHeader !== false && c.id === activeId) $('#chatTitle').value = c.title;
+  }
+
   function newChatObj() {
     return {
       id: 'c' + Date.now() + Math.floor(Math.random() * 10000),
@@ -77,10 +91,53 @@
       const dot = document.createElement('span'); dot.className = 'dot';
       const name = document.createElement('span'); name.className = 'name';
       name.textContent = c.title;
-      div.append(dot, name);
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'chat-rename-btn';
+      renameBtn.title = 'Переименовать чат';
+      renameBtn.setAttribute('aria-label', `Переименовать чат «${c.title}»`);
+      renameBtn.innerHTML = '<svg aria-hidden="true"><use href="#ui-edit"></use></svg>';
+      div.append(dot, name, renameBtn);
       div.addEventListener('click', () => openChat(c.id));
+      renameBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        startChatRename(c, div, name, renameBtn);
+      });
       box.appendChild(div);
     }
+  }
+
+  function startChatRename(c, item, name, button) {
+    const input = document.createElement('input');
+    input.className = 'chat-rename-input';
+    input.value = c.title;
+    input.maxLength = MAX_CHAT_TITLE_LENGTH;
+    input.setAttribute('aria-label', `Новое название чата «${c.title}»`);
+    name.replaceWith(input);
+    button.classList.add('editing');
+
+    let finished = false;
+    function finish(save) {
+      if (finished) return;
+      finished = true;
+      if (save) commitChatTitle(c, input.value);
+      renderChatList();
+    }
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => finish(true), { once: true });
+    item.classList.add('renaming');
+    input.focus();
+    input.select();
   }
 
   function openChat(id) {
@@ -718,7 +775,10 @@
 
     $('#chatTitle').addEventListener('input', () => {
       const c = getActive();
-      if (c) { c.title = $('#chatTitle').value.trim() || 'Без имени'; touch(c); saveChats(); renderChatList(); }
+      if (c) {
+        commitChatTitle(c, $('#chatTitle').value, false);
+        renderChatList();
+      }
     });
 
     // F-09: кнопка «Очистить все чаты»
