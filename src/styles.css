@@ -443,7 +443,22 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-soft); f
 .music-num { width: 31px; height: 31px; flex: 0 0 31px; display: grid; place-items: center; border-radius: 10px; color: var(--cyan); background: rgba(77,226,208,.08); border: 1px solid rgba(77,226,208,.15); font-size: 11px; font-weight: 800; }
 .music-card input { min-width: 0; }
 .music-btns { display: flex; gap: 8px; }
+.music-player-shell { display: flex; flex-direction: column; gap: 9px; }
 .music-frame { width: 100%; height: 170px; border: 0; border-radius: 12px; background: #000; }
+.music-volume {
+  min-height: 40px; padding: 7px 10px; display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) 38px; align-items: center; gap: 10px;
+  border: 1px solid var(--border); border-radius: 11px; background: rgba(7,11,22,.56);
+}
+.music-volume-label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 10.5px; font-weight: 700; }
+.music-volume-label svg {
+  width: 15px; height: 15px; fill: none; stroke: var(--cyan); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.music-volume .m-volume { width: 100%; height: 18px; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--accent); cursor: pointer; }
+.music-volume .m-volume:focus { box-shadow: none; }
+.music-volume .m-volume:disabled { opacity: .45; cursor: not-allowed; }
+.m-volume-value { color: var(--cyan); font-size: 10.5px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Menus and goal workshop */
 #tmSearch { width: min(500px, 100%); margin-bottom: 16px; }

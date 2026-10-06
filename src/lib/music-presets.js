@@ -13,6 +13,8 @@
   const SLOT_COUNT = 10;
   const STORAGE_KEY = 'oh_music_v2';
   const LEGACY_KEY = 'oh_music_v1';
+  const VOLUME_STORAGE_KEY = 'oh_music_volume_v1';
+  const DEFAULT_VOLUME = 50;
   const DEFAULT_URLS = Object.freeze([
     'https://www.youtube.com/watch?v=C5o3Ofg2mWs',
     'https://www.youtube.com/watch?v=Vy5DPb-T2ls&pp=0gcJCS0MAYcqIYzv',
@@ -53,5 +55,41 @@
     return save(storage, migrated);
   }
 
-  return { DEFAULT_URLS, LEGACY_KEY, SLOT_COUNT, STORAGE_KEY, load, save };
+  function normalizeVolume(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return DEFAULT_VOLUME;
+    return Math.min(100, Math.max(0, Math.round(number)));
+  }
+
+  function normalizeVolumes(value) {
+    const source = Array.isArray(value) ? value : [];
+    return Array.from({ length: SLOT_COUNT }, (_, index) =>
+      index < source.length ? normalizeVolume(source[index]) : DEFAULT_VOLUME);
+  }
+
+  function saveVolumes(storage, value) {
+    const volumes = normalizeVolumes(value);
+    try { storage.setItem(VOLUME_STORAGE_KEY, JSON.stringify(volumes)); }
+    catch { /* private mode / storage disabled */ }
+    return volumes;
+  }
+
+  function loadVolumes(storage) {
+    const current = read(storage, VOLUME_STORAGE_KEY);
+    return current ? normalizeVolumes(current) : saveVolumes(storage, []);
+  }
+
+  return {
+    DEFAULT_URLS,
+    DEFAULT_VOLUME,
+    LEGACY_KEY,
+    SLOT_COUNT,
+    STORAGE_KEY,
+    VOLUME_STORAGE_KEY,
+    load,
+    loadVolumes,
+    normalizeVolume,
+    save,
+    saveVolumes
+  };
 });

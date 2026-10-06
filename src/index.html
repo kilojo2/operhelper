@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; connect-src 'self'; form-action 'self';">
+      content="default-src 'self'; script-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; connect-src 'self'; form-action 'self';">
 <title>Operator Helper</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -53,6 +53,10 @@
   <symbol id="ui-edit" viewBox="0 0 24 24">
     <path d="M12 20h9"/>
     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>
+  </symbol>
+  <symbol id="ui-volume" viewBox="0 0 24 24">
+    <path d="M11 5 6 9H3v6h3l5 4Z"/>
+    <path d="M15 9a4 4 0 0 1 0 6M18 6a8 8 0 0 1 0 12"/>
   </symbol>
 </svg>
 

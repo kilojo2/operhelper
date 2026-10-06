@@ -254,6 +254,33 @@
     return window.MusicPresets.load(localStorage);
   }
   function saveMusic(arr) { window.MusicPresets.save(localStorage, arr); }
+  function loadMusicVolumes() { return window.MusicPresets.loadVolumes(localStorage); }
+  function saveMusicVolumes(arr) { window.MusicPresets.saveVolumes(localStorage, arr); }
+
+  let youtubeApiPromise = null;
+  function loadYouTubePlayerApi() {
+    if (window.YT && typeof window.YT.Player === 'function') return Promise.resolve(window.YT);
+    if (youtubeApiPromise) return youtubeApiPromise;
+
+    youtubeApiPromise = new Promise((resolve, reject) => {
+      const previousReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof previousReady === 'function') previousReady();
+        if (window.YT && typeof window.YT.Player === 'function') resolve(window.YT);
+        else reject(new Error('YouTube IFrame API не инициализирован'));
+      };
+
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.async = true;
+      script.addEventListener('error', () => {
+        youtubeApiPromise = null;
+        reject(new Error('Не удалось загрузить управление плеером YouTube'));
+      }, { once: true });
+      document.head.appendChild(script);
+    });
+    return youtubeApiPromise;
+  }
 
   function ytId(url) {
     try {
@@ -274,6 +301,7 @@
     const grid = $('#musicGrid');
     grid.innerHTML = '';
     const list = loadMusic();
+    const volumes = loadMusicVolumes();
 
     list.forEach((url, i) => {
       const card = document.createElement('div');
@@ -298,17 +326,86 @@
 
       const playBtn = card.querySelector('.m-play');
       playBtn.addEventListener('click', () => {
-        const exist = card.querySelector('iframe');
-        if (exist) { exist.remove(); playBtn.textContent = '▶ Мини-плеер'; return; }
+        const exist = card.querySelector('.music-player-shell');
+        if (exist) {
+          if (exist.youtubePlayer && typeof exist.youtubePlayer.destroy === 'function') {
+            exist.youtubePlayer.destroy();
+          }
+          exist.remove();
+          playBtn.textContent = '▶ Мини-плеер';
+          return;
+        }
         const id = ytId(input.value.trim());
         if (!id) { showToast('⚠️ Некорректная ссылка YouTube'); return; }
+
+        const shell = document.createElement('div');
+        shell.className = 'music-player-shell';
         const fr = document.createElement('iframe');
         fr.className = 'music-frame';
-        fr.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&loop=1&playlist=' + id;
-        fr.allow = 'autoplay; encrypted-media';
+        fr.title = 'YouTube мини-плеер ' + (i + 1);
+        const embedUrl = new URL('https://www.youtube-nocookie.com/embed/' + id);
+        embedUrl.searchParams.set('autoplay', '1');
+        embedUrl.searchParams.set('loop', '1');
+        embedUrl.searchParams.set('playlist', id);
+        embedUrl.searchParams.set('enablejsapi', '1');
+        embedUrl.searchParams.set('playsinline', '1');
+        if (/^https?:$/.test(window.location.protocol)) {
+          embedUrl.searchParams.set('origin', window.location.origin);
+        }
+        fr.src = embedUrl.toString();
+        fr.allow = 'autoplay; encrypted-media; picture-in-picture';
         fr.allowFullscreen = true;
-        card.appendChild(fr);
+
+        const volume = document.createElement('label');
+        volume.className = 'music-volume';
+        volume.innerHTML =
+          '<span class="music-volume-label"><svg aria-hidden="true"><use href="#ui-volume"></use></svg>Громкость</span>' +
+          '<input class="m-volume" type="range" min="0" max="100" step="1">' +
+          '<output class="m-volume-value"></output>';
+        const volumeInput = volume.querySelector('.m-volume');
+        const volumeValue = volume.querySelector('.m-volume-value');
+        volumeInput.value = String(volumes[i]);
+        volumeInput.setAttribute('aria-label', `Громкость мини-плеера ${i + 1}`);
+        volumeValue.value = volumes[i] + '%';
+        volumeValue.textContent = volumes[i] + '%';
+
+        function applyVolume(rawValue, persist) {
+          const nextVolume = window.MusicPresets.normalizeVolume(rawValue);
+          volumeValue.value = nextVolume + '%';
+          volumeValue.textContent = nextVolume + '%';
+          volumeInput.setAttribute('aria-valuetext', nextVolume + '%');
+          if (persist) {
+            volumes[i] = nextVolume;
+            saveMusicVolumes(volumes);
+          }
+          if (shell.youtubePlayer && typeof shell.youtubePlayer.setVolume === 'function') {
+            shell.youtubePlayer.setVolume(nextVolume);
+          }
+        }
+
+        volumeInput.addEventListener('input', () => applyVolume(volumeInput.value, false));
+        volumeInput.addEventListener('change', () => applyVolume(volumeInput.value, true));
+        applyVolume(volumes[i], false);
+        shell.append(fr, volume);
+        card.appendChild(shell);
         playBtn.textContent = '⏹ Стоп';
+
+        loadYouTubePlayerApi().then((YT) => {
+          if (!shell.isConnected) return;
+          shell.youtubePlayer = new YT.Player(fr, {
+            events: {
+              onReady(event) {
+                shell.youtubePlayer = event.target;
+                applyVolume(volumeInput.value, false);
+              }
+            }
+          });
+        }).catch((error) => {
+          if (!shell.isConnected) return;
+          volumeInput.disabled = true;
+          volume.title = error.message;
+          showToast('⚠️ Видео запущено, но управление громкостью недоступно');
+        });
       });
 
       grid.appendChild(card);
