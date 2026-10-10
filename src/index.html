@@ -312,18 +312,174 @@
 
 <!-- ===================== ГЕНЕРАТОР ЦЕЛЕЙ ===================== -->
 <section id="tab-goalsgen" class="tab-page hidden">
-  <header class="page-intro"><span class="eyebrow">Goal workshop</span><h1>Генератор целей</h1><p class="page-desc">Выберите тему, соберите готовый набор или создайте новые варианты через AI. Избранные цели формируют персональный сет для стрима.</p></header>
-  <div id="ggTags" class="pill-row"></div>
-  <div class="row-gap" style="margin-bottom: 12px">
-    <button id="ggGenerateBtn" class="btn primary">✨ Сгенерировать ещё (AI)</button>
-    <button id="ggCopyAllBtn" class="btn ghost">📋 Копировать все мои цели</button>
-    <span id="ggStatus" class="hint"></span>
+  <header class="page-intro"><span class="eyebrow">Conversion workshop</span><h1>Генератор</h1><p class="page-desc">Соберите цели для стрима или подготовьте короткое персональное предложение для уже начавшегося приватного шоу.</p></header>
+
+  <div class="generator-mode-switch" role="tablist" aria-label="Режим генератора">
+    <button id="generatorModeGoals" class="generator-mode-btn active" type="button" role="tab" aria-selected="true" aria-controls="goalsGeneratorPanel" data-mode="goals">
+      <span>Цели</span>
+      <small>Набор для стрима</small>
+    </button>
+    <button id="generatorModeBait" class="generator-mode-btn" type="button" role="tab" aria-selected="false" aria-controls="donationBaitPanel" data-mode="bait">
+      <span>Байт на донат</span>
+      <small>Предложение в привате</small>
+    </button>
   </div>
-  <h3 id="ggTitle" style="margin-bottom: 10px">Выбери хештег выше ↑</h3>
-  <div id="ggGrid" class="tm-grid"></div>
-  <div class="card" style="margin-top: 14px">
-    <div class="card-head"><h3>⭐ Мои цели на стрим <span id="myGoalsCount" class="chip subtle"></span></h3></div>
-    <div id="myGoalsList"></div>
+
+  <div id="goalsGeneratorPanel" class="generator-mode-panel" role="tabpanel" aria-labelledby="generatorModeGoals">
+    <div id="ggTags" class="pill-row"></div>
+    <div class="row-gap" style="margin-bottom: 12px">
+      <button id="ggGenerateBtn" class="btn primary">✨ Сгенерировать ещё (AI)</button>
+      <button id="ggCopyAllBtn" class="btn ghost">📋 Копировать все мои цели</button>
+      <span id="ggStatus" class="hint"></span>
+    </div>
+    <h3 id="ggTitle" style="margin-bottom: 10px">Выбери хештег выше ↑</h3>
+    <div id="ggGrid" class="tm-grid"></div>
+    <div class="card" style="margin-top: 14px">
+      <div class="card-head"><h3>⭐ Мои цели на стрим <span id="myGoalsCount" class="chip subtle"></span></h3></div>
+      <div id="myGoalsList"></div>
+    </div>
+  </div>
+
+  <div id="donationBaitPanel" class="generator-mode-panel hidden" role="tabpanel" aria-labelledby="generatorModeBait">
+    <div class="db-layout">
+      <section class="card db-form-card" aria-labelledby="dbFormTitle">
+        <div class="db-section-head">
+          <div>
+            <span class="db-step">Условия предложения</span>
+            <h2 id="dbFormTitle">Что предложить пользователю</h2>
+          </div>
+          <span class="db-private-badge">Приват уже идёт</span>
+        </div>
+
+        <fieldset class="db-fieldset">
+          <legend>Объект</legend>
+          <div id="dbTargetPills" class="db-option-row" role="radiogroup" aria-label="Объект предложения">
+            <button class="db-option active" type="button" role="radio" aria-checked="true" data-target="breast">Грудь</button>
+            <button class="db-option" type="button" role="radio" aria-checked="false" data-target="butt">Попа</button>
+            <button class="db-option" type="button" role="radio" aria-checked="false" data-target="other">Другое</button>
+          </div>
+        </fieldset>
+
+        <div id="dbCustomTargetRow" class="field-row hidden">
+          <label for="dbCustomTarget">Свой вариант объекта</label>
+          <input id="dbCustomTarget" type="text" minlength="2" maxlength="50" autocomplete="off" placeholder="Например: масло для тела">
+          <small class="db-field-help">От 2 до 50 символов</small>
+        </div>
+
+        <div class="db-form-grid">
+          <div class="field-row db-action-field">
+            <label for="dbAction">Точное действие</label>
+            <input id="dbAction" type="text" minlength="2" maxlength="120" autocomplete="off" placeholder="Что именно модель готова сделать">
+            <small class="db-field-help">Формулировка должна соответствовать реальным границам модели</small>
+          </div>
+          <div class="field-row db-token-field">
+            <label for="dbTokens">Цена в токенах</label>
+            <div class="db-token-input">
+              <input id="dbTokens" type="number" min="1" max="999999" step="1" inputmode="numeric" placeholder="500">
+              <span>TK</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label for="dbContext">Последние сообщения переписки <span class="db-optional">необязательно</span></label>
+          <textarea id="dbContext" rows="5" maxlength="6000" placeholder="Вставьте последние сообщения — генератор поймёт, нужно назвать цену сразу или сначала заинтересовать"></textarea>
+          <small class="db-field-help">До 6 000 символов. Переписка используется только как контекст.</small>
+        </div>
+
+        <div class="field-row">
+          <label for="dbBoundary">Ограничение этого предложения <span class="db-optional">необязательно</span></label>
+          <input id="dbBoundary" type="text" maxlength="500" autocomplete="off" placeholder="Например: бельё полностью не снимаю">
+        </div>
+
+        <fieldset class="db-fieldset db-tone-fieldset">
+          <legend>Тон сообщения</legend>
+          <div id="dbToneOptions" class="db-option-row db-tone-options" role="radiogroup" aria-label="Тон сообщения">
+            <button class="db-option" type="button" role="radio" aria-checked="false" data-tone="soft">Мягко</button>
+            <button class="db-option active" type="button" role="radio" aria-checked="true" data-tone="playful">Игриво</button>
+            <button class="db-option" type="button" role="radio" aria-checked="false" data-tone="bold">Смело</button>
+          </div>
+        </fieldset>
+
+        <div class="db-submit-row">
+          <button id="dbGenerateBtn" class="btn primary db-generate-btn" type="button">
+            <svg aria-hidden="true"><use href="#nav-wand"></use></svg>
+            <span>Сгенерировать предложение</span>
+          </button>
+          <span id="dbStatus" class="hint db-status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section id="dbResult" class="db-result hidden" aria-labelledby="dbResultTitle" aria-live="polite">
+        <div class="db-result-head">
+          <div>
+            <span class="db-step">Готовый сценарий</span>
+            <h2 id="dbResultTitle">Следующая реплика</h2>
+          </div>
+          <span id="dbPriceMode" class="db-price-mode"></span>
+        </div>
+
+        <div id="dbVariants" class="db-variants">
+          <article class="db-variant-card db-primary-variant">
+            <div class="db-card-head">
+              <div><span class="db-card-kicker">Рекомендация</span><h3>Лучший вариант</h3></div>
+              <button class="db-copy-btn" type="button" data-copy="variant-0" aria-label="Скопировать рекомендуемую фразу">
+                <svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span>
+              </button>
+            </div>
+            <p id="dbVariant0Text" class="db-source-text"></p>
+            <div class="db-translation"><span>Перевод</span><p id="dbVariant0Ru"></p></div>
+          </article>
+
+          <div class="db-alternatives-grid" aria-label="Альтернативные варианты">
+            <article class="db-variant-card">
+              <div class="db-card-head">
+                <h3>Альтернатива 1</h3>
+                <button class="db-copy-btn compact" type="button" data-copy="variant-1" aria-label="Скопировать первую альтернативу">
+                  <svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span>
+                </button>
+              </div>
+              <p id="dbVariant1Text" class="db-source-text"></p>
+              <div class="db-translation"><span>Перевод</span><p id="dbVariant1Ru"></p></div>
+            </article>
+            <article class="db-variant-card">
+              <div class="db-card-head">
+                <h3>Альтернатива 2</h3>
+                <button class="db-copy-btn compact" type="button" data-copy="variant-2" aria-label="Скопировать вторую альтернативу">
+                  <svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span>
+                </button>
+              </div>
+              <p id="dbVariant2Text" class="db-source-text"></p>
+              <div class="db-translation"><span>Перевод</span><p id="dbVariant2Ru"></p></div>
+            </article>
+          </div>
+        </div>
+
+        <section class="db-followups" aria-labelledby="dbFollowupsTitle">
+          <div class="db-section-head db-followups-head">
+            <div><span class="db-step">Продолжение</span><h2 id="dbFollowupsTitle">Если пользователь…</h2></div>
+            <span class="hint">Заранее готовые ответы для трёх сценариев</span>
+          </div>
+          <div class="db-followup-grid">
+            <article class="db-followup-card">
+              <div class="db-card-head"><h3>Спросит цену</h3><button class="db-copy-btn compact" type="button" data-copy="asksPrice" aria-label="Скопировать ответ о цене"><svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span></button></div>
+              <p id="dbFollowAsksPriceText" class="db-source-text"></p>
+              <div class="db-translation"><span>Перевод</span><p id="dbFollowAsksPriceRu"></p></div>
+            </article>
+            <article class="db-followup-card">
+              <div class="db-card-head"><h3>Согласится</h3><button class="db-copy-btn compact" type="button" data-copy="agrees" aria-label="Скопировать ответ на согласие"><svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span></button></div>
+              <p id="dbFollowAgreesText" class="db-source-text"></p>
+              <div class="db-translation"><span>Перевод</span><p id="dbFollowAgreesRu"></p></div>
+            </article>
+            <article class="db-followup-card">
+              <div class="db-card-head"><h3>Засомневается</h3><button class="db-copy-btn compact" type="button" data-copy="hesitates" aria-label="Скопировать ответ на сомнение"><svg aria-hidden="true"><use href="#ui-copy"></use></svg><span>Скопировать</span></button></div>
+              <p id="dbFollowHesitatesText" class="db-source-text"></p>
+              <div class="db-translation"><span>Перевод</span><p id="dbFollowHesitatesRu"></p></div>
+            </article>
+          </div>
+        </section>
+      </section>
+    </div>
   </div>
 </section>
 
@@ -431,6 +587,7 @@
 <script src="lib/assistant-result.js"></script>
 <script src="lib/ai-json.js"></script>
 <script src="lib/music-presets.js"></script>
+<script src="lib/donation-bait.js"></script>
 <script src="prompts.js"></script>
 <script src="assistant.js"></script>
 <script src="app.js"></script>

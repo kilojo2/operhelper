@@ -678,6 +678,315 @@
     window.copyText(list.map((g, i) => (i + 1) + '. ' + g.en).join('\n'));
   }
 
+  /* ---------- Генератор разового донат-предложения ---------- */
+  const DONATION_BAIT_STORAGE_KEY = 'oh_donation_bait_v1';
+  const DONATION_BAIT_DEFAULTS = Object.freeze({
+    target: 'breast',
+    customTarget: '',
+    action: '',
+    tokens: '',
+    context: '',
+    boundary: '',
+    tone: 'playful'
+  });
+  let donationBaitState = { ...DONATION_BAIT_DEFAULTS };
+  let donationBaitLastResult = null;
+
+  function loadDonationBaitState() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(DONATION_BAIT_STORAGE_KEY) || '{}');
+      const target = ['breast', 'butt', 'other'].includes(stored.target)
+        ? stored.target : DONATION_BAIT_DEFAULTS.target;
+      const tone = ['soft', 'playful', 'bold'].includes(stored.tone)
+        ? stored.tone : DONATION_BAIT_DEFAULTS.tone;
+      return {
+        target,
+        customTarget: String(stored.customTarget || '').slice(0, 50),
+        action: String(stored.action || '').slice(0, 120),
+        tokens: String(stored.tokens || '').slice(0, 6),
+        context: String(stored.context || '').slice(0, 6000),
+        boundary: String(stored.boundary || '').slice(0, 500),
+        tone
+      };
+    } catch {
+      return { ...DONATION_BAIT_DEFAULTS };
+    }
+  }
+
+  function saveDonationBaitState() {
+    try {
+      localStorage.setItem(DONATION_BAIT_STORAGE_KEY, JSON.stringify(donationBaitState));
+    } catch (error) {
+      console.warn('Не удалось сохранить условия донат-предложения:', error);
+    }
+  }
+
+  function setGeneratorMode(mode) {
+    const selected = mode === 'bait' ? 'bait' : 'goals';
+    const goalsButton = $('#generatorModeGoals');
+    const baitButton = $('#generatorModeBait');
+    const goalsPanel = $('#goalsGeneratorPanel');
+    const baitPanel = $('#donationBaitPanel');
+    if (!goalsButton || !baitButton || !goalsPanel || !baitPanel) return;
+    goalsButton.classList.toggle('active', selected === 'goals');
+    baitButton.classList.toggle('active', selected === 'bait');
+    goalsButton.setAttribute('aria-selected', String(selected === 'goals'));
+    baitButton.setAttribute('aria-selected', String(selected === 'bait'));
+    goalsPanel.classList.toggle('hidden', selected !== 'goals');
+    baitPanel.classList.toggle('hidden', selected !== 'bait');
+  }
+
+  function setDonationBaitChoice(containerSelector, dataName, value) {
+    $$(containerSelector + ' [data-' + dataName + ']').forEach((button) => {
+      const active = button.dataset[dataName] === value;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+      if (button.getAttribute('role') === 'radio') {
+        button.setAttribute('aria-checked', String(active));
+      }
+    });
+  }
+
+  function syncDonationBaitForm() {
+    const fields = {
+      dbCustomTarget: donationBaitState.customTarget,
+      dbAction: donationBaitState.action,
+      dbTokens: donationBaitState.tokens,
+      dbContext: donationBaitState.context,
+      dbBoundary: donationBaitState.boundary
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+      const element = $('#' + id);
+      if (element) element.value = value;
+    });
+    setDonationBaitChoice('#dbTargetPills', 'target', donationBaitState.target);
+    setDonationBaitChoice('#dbToneOptions', 'tone', donationBaitState.tone);
+    const customRow = $('#dbCustomTargetRow');
+    if (customRow) customRow.classList.toggle('hidden', donationBaitState.target !== 'other');
+  }
+
+  function collectDonationBaitInput() {
+    return {
+      target: donationBaitState.target,
+      customTarget: ($('#dbCustomTarget') && $('#dbCustomTarget').value) || '',
+      action: ($('#dbAction') && $('#dbAction').value) || '',
+      tokens: ($('#dbTokens') && $('#dbTokens').value) || '',
+      context: ($('#dbContext') && $('#dbContext').value) || '',
+      boundary: ($('#dbBoundary') && $('#dbBoundary').value) || '',
+      tone: donationBaitState.tone
+    };
+  }
+
+  function setDonationBaitStatus(message, kind) {
+    const status = $('#dbStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.dataset.state = kind || '';
+    status.classList.toggle('error', kind === 'error');
+    status.classList.toggle('success', kind === 'success');
+  }
+
+  function isRussianDonationBaitProfile(profile) {
+    const language = String(profile && profile.language || '').trim().toLocaleLowerCase('ru-RU');
+    return /^(ru|rus|russian|рус|русский|русская)(?:\b|[-_])/i.test(language);
+  }
+
+  function setDonationBaitPhrase(textId, translationId, phrase, hideTranslation) {
+    const text = $('#' + textId);
+    const translation = $('#' + translationId);
+    const original = String(phrase && phrase.text || '').trim();
+    const russian = String(phrase && phrase.ru || '').trim();
+    if (text) text.textContent = original;
+    if (translation) {
+      translation.textContent = russian;
+      translation.classList.toggle(
+        'hidden',
+        hideTranslation || !russian || original.toLocaleLowerCase() === russian.toLocaleLowerCase()
+      );
+    }
+  }
+
+  function renderDonationBaitResult(result, profile) {
+    donationBaitLastResult = result;
+    const hideTranslation = isRussianDonationBaitProfile(profile);
+    result.variants.forEach((phrase, index) => {
+      setDonationBaitPhrase('dbVariant' + index + 'Text', 'dbVariant' + index + 'Ru', phrase, hideTranslation);
+    });
+    setDonationBaitPhrase(
+      'dbFollowAsksPriceText', 'dbFollowAsksPriceRu', result.followUps.asksPrice, hideTranslation
+    );
+    setDonationBaitPhrase(
+      'dbFollowAgreesText', 'dbFollowAgreesRu', result.followUps.agrees, hideTranslation
+    );
+    setDonationBaitPhrase(
+      'dbFollowHesitatesText', 'dbFollowHesitatesRu', result.followUps.hesitates, hideTranslation
+    );
+    const priceMode = $('#dbPriceMode');
+    if (priceMode) {
+      priceMode.textContent = result.pricePlacement === 'now'
+        ? 'Цена в следующей реплике'
+        : 'Сначала интерес, цена — по вопросу';
+    }
+    const resultBox = $('#dbResult');
+    if (resultBox) resultBox.classList.remove('hidden');
+  }
+
+  function getDonationBaitCopyText(key) {
+    if (!donationBaitLastResult) return '';
+    const variants = donationBaitLastResult.variants || [];
+    if (key.indexOf('variant-') === 0) {
+      const index = Number(key.slice('variant-'.length));
+      return variants[index] && variants[index].text || '';
+    }
+    const followUps = donationBaitLastResult.followUps || {};
+    return followUps[key] && followUps[key].text || '';
+  }
+
+  async function requestDonationBait(cfg, prepared, attempt, previousError) {
+    const messages = prepared.messages.slice();
+    if (attempt > 0) {
+      messages.push({
+        role: 'user',
+        content: [
+          'Предыдущий ответ не прошёл локальную проверку: ' + previousError,
+          'Создай полностью новый ответ. Строго соблюдай исходную JSON-схему, единственную цену и все границы.'
+        ].join('\n')
+      });
+    }
+    const response = await window.api.chat({
+      model: cfg.model || 'deepseek-chat',
+      temperature: attempt > 0 ? 0.2 : 0.72,
+      maxTokens: 1600,
+      responseFormat: 'json_object',
+      messages
+    });
+    if (!response || !response.ok) {
+      throw new Error(response && response.error ? response.error : 'Сервер не вернул результат');
+    }
+    return window.DonationBait.parseResponse(response.content, prepared);
+  }
+
+  async function generateDonationBait() {
+    const button = $('#dbGenerateBtn');
+    if (!button || button.disabled) return;
+    const cfg = (window.AppState && AppState.config) || {};
+    const profile = cfg.profile || {};
+    const input = collectDonationBaitInput();
+    if (!window.DonationBait) {
+      setDonationBaitStatus('Модуль генератора не загрузился. Обнови страницу.', 'error');
+      return;
+    }
+
+    const validation = window.DonationBait.validateInput(input, profile);
+    if (!validation.valid) {
+      setDonationBaitStatus(validation.issues.join(' '), 'error');
+      return;
+    }
+
+    donationBaitState = {
+      target: validation.value.target,
+      customTarget: validation.value.customTarget,
+      action: validation.value.action,
+      tokens: String(validation.value.tokens),
+      context: validation.value.context,
+      boundary: validation.value.boundary,
+      tone: validation.value.tone
+    };
+    syncDonationBaitForm();
+    saveDonationBaitState();
+
+    let prepared;
+    try {
+      prepared = window.DonationBait.buildMessages(validation.value, profile);
+    } catch (error) {
+      setDonationBaitStatus(error.message || 'Не удалось подготовить безопасный запрос.', 'error');
+      return;
+    }
+
+    button.disabled = true;
+    setDonationBaitStatus('Готовлю следующую реплику…', 'loading');
+    let previousError = '';
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const result = await requestDonationBait(cfg, prepared, attempt, previousError);
+          renderDonationBaitResult(result, profile);
+          setDonationBaitStatus('Готово. Проверь фразу перед отправкой.', 'success');
+          return;
+        } catch (error) {
+          previousError = error && error.message ? error.message : 'неизвестная ошибка формата';
+          if (attempt === 0) {
+            setDonationBaitStatus('Исправляю формат и правила ответа…', 'loading');
+            continue;
+          }
+          throw error;
+        }
+      }
+    } catch (error) {
+      setDonationBaitStatus(
+        (error && error.message ? error.message : 'Не удалось сгенерировать фразу.') +
+          (donationBaitLastResult ? ' Последний успешный результат сохранён ниже.' : ''),
+        'error'
+      );
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function initDonationBait() {
+    if (!$('#donationBaitPanel')) return;
+    donationBaitState = loadDonationBaitState();
+    syncDonationBaitForm();
+    setGeneratorMode('goals');
+
+    $('#generatorModeGoals').addEventListener('click', () => setGeneratorMode('goals'));
+    $('#generatorModeBait').addEventListener('click', () => setGeneratorMode('bait'));
+
+    $$('#dbTargetPills [data-target]').forEach((button) => {
+      button.addEventListener('click', () => {
+        donationBaitState.target = button.dataset.target;
+        setDonationBaitChoice('#dbTargetPills', 'target', donationBaitState.target);
+        const customRow = $('#dbCustomTargetRow');
+        if (customRow) customRow.classList.toggle('hidden', donationBaitState.target !== 'other');
+        saveDonationBaitState();
+        setDonationBaitStatus('', '');
+      });
+    });
+
+    $$('#dbToneOptions [data-tone]').forEach((button) => {
+      button.addEventListener('click', () => {
+        donationBaitState.tone = button.dataset.tone;
+        setDonationBaitChoice('#dbToneOptions', 'tone', donationBaitState.tone);
+        saveDonationBaitState();
+      });
+    });
+
+    ['dbCustomTarget', 'dbAction', 'dbTokens', 'dbContext', 'dbBoundary'].forEach((id) => {
+      const element = $('#' + id);
+      if (!element) return;
+      element.addEventListener('input', () => {
+        const key = {
+          dbCustomTarget: 'customTarget',
+          dbAction: 'action',
+          dbTokens: 'tokens',
+          dbContext: 'context',
+          dbBoundary: 'boundary'
+        }[id];
+        donationBaitState[key] = element.value;
+        saveDonationBaitState();
+        setDonationBaitStatus('', '');
+      });
+    });
+
+    $('#dbGenerateBtn').addEventListener('click', generateDonationBait);
+    $$('#dbResult [data-copy]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const text = getDonationBaitCopyText(button.dataset.copy || '');
+        if (text) window.copyText(text);
+      });
+    });
+  }
+
   /* ---------- Запуск ---------- */
   window.addEventListener('DOMContentLoaded', async () => {
     // 1) Сначала привязываем интерфейс — кнопки работают даже если сервер недоступен
@@ -704,6 +1013,7 @@
       initMusic();
       initTipMenu();
       initGoalsGen();
+      initDonationBait();
       Assistant.initLibrary(AppState.data.invitesRaw || '');
     } catch (e) { console.error('Ошибка отрисовки данных:', e); }
   });
