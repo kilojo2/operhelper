@@ -415,13 +415,25 @@
   }
 
   /* ---------- Тип-меню ---------- */
-  let tmActive = 'all';
+  let tmActive = 'classic';
   let tmQuery = '';
 
   function initTipMenu() {
-    const cats = AppState.data.tipMenu || [];
+    const cats = (AppState.data.tipMenu || []).filter((category) => category.id !== 'goals');
     const pills = $('#tmCats');
     pills.innerHTML = '';
+
+    const progression = $('#tmProgression');
+    if (progression && window.TipMenuOrder) {
+      progression.innerHTML = window.TipMenuOrder.STAGES.map((stage, index) =>
+        `<span><b>${stage.number}</b>${escHtml(stage.name)}</span>` +
+        (index < window.TipMenuOrder.STAGES.length - 1 ? '<i aria-hidden="true">→</i>' : '')
+      ).join('');
+    }
+
+    if (!cats.some((category) => category.id === tmActive)) {
+      tmActive = cats[0] ? cats[0].id : 'all';
+    }
 
     const mkPill = (id, label) => {
       const b = document.createElement('button');
@@ -435,7 +447,7 @@
       return b;
     };
 
-    pills.appendChild(mkPill('all', '✨ Все категории'));
+    pills.appendChild(mkPill('all', 'Все стили'));
     cats.forEach(c => pills.appendChild(mkPill(c.id, (c.icon || '') + ' ' + c.name)));
 
     $('#tmSearch').addEventListener('input', (e) => {
@@ -448,50 +460,65 @@
   function renderTipMenu() {
     const grid = $('#tmGrid');
     grid.innerHTML = '';
-    const cats = AppState.data.tipMenu || [];
+    const cats = (AppState.data.tipMenu || []).filter((category) => category.id !== 'goals');
+    const order = window.TipMenuOrder;
     let count = 0;
 
-    for (const c of cats) {
-      if (tmActive !== 'all' && tmActive !== c.id) continue;
-      const all = c.items || [];
-      const textOf = (t) => typeof t === 'string'
-        ? t
-        : ((t.en || '') + ' ' + (t.ru || ''));
-      const items = all.filter(t => !tmQuery || textOf(t).toLowerCase().includes(tmQuery));
-      if (!items.length) continue;
+    if (!order) {
+      grid.innerHTML = '<div class="pane-note">Модуль порядка тип-меню не загрузился</div>';
+      return;
+    }
 
-      const h = document.createElement('h3');
-      h.style.gridColumn = '1 / -1';
-      h.style.margin = '10px 0 2px';
-      h.style.fontSize = '14px';
-      h.textContent = (c.icon || '') + ' ' + c.name;
-      grid.appendChild(h);
+    const visibleCats = cats.filter((category) => tmActive === 'all' || tmActive === category.id);
+    for (const stage of order.STAGES) {
+      const categoryGroups = visibleCats.map((category) => ({
+        category,
+        items: (category.items || []).filter((item) => {
+          const matchesSearch = !tmQuery || order.textOf(item).toLocaleLowerCase().includes(tmQuery);
+          return matchesSearch && order.stageIdFor(item) === stage.id;
+        })
+      })).filter((entry) => entry.items.length);
+      if (!categoryGroups.length) continue;
 
-      for (const t of items) {
-        const div = document.createElement('div');
-        div.className = 'tm-item';
-        const span = document.createElement('span');
-        let copyText;
-        if (typeof t === 'string') {
-          span.textContent = t;
-          copyText = t;
-        } else {
-          const en = document.createElement('div');
-          en.className = 'tm-en';
-          en.textContent = t.en || t.ru || '';
-          const ru = document.createElement('div');
-          ru.className = 'tm-ru';
-          ru.textContent = t.ru || '';
-          span.append(en, ru);
-          copyText = t.en || t.ru || '';
+      const stageHeading = document.createElement('div');
+      stageHeading.className = 'tm-stage-heading';
+      stageHeading.innerHTML = `<span>${stage.number}</span><div><h3>${escHtml(stage.name)}</h3><p>${escHtml(stage.description)}</p></div>`;
+      grid.appendChild(stageHeading);
+
+      for (const group of categoryGroups) {
+        if (tmActive === 'all') {
+          const categoryHeading = document.createElement('h4');
+          categoryHeading.className = 'tm-category-heading';
+          categoryHeading.textContent = (group.category.icon || '') + ' ' + group.category.name;
+          grid.appendChild(categoryHeading);
         }
-        const btn = document.createElement('button');
-        btn.className = 'tm-copy';
-        btn.textContent = 'copy';
-        btn.addEventListener('click', () => window.copyText(copyText));
-        div.append(span, btn);
-        grid.appendChild(div);
-        count++;
+
+        for (const t of group.items) {
+          const div = document.createElement('div');
+          div.className = 'tm-item';
+          const span = document.createElement('span');
+          let copyText;
+          if (typeof t === 'string') {
+            span.textContent = t;
+            copyText = t;
+          } else {
+            const en = document.createElement('div');
+            en.className = 'tm-en';
+            en.textContent = t.en || t.ru || '';
+            const ru = document.createElement('div');
+            ru.className = 'tm-ru';
+            ru.textContent = t.ru || '';
+            span.append(en, ru);
+            copyText = t.en || t.ru || '';
+          }
+          const btn = document.createElement('button');
+          btn.className = 'tm-copy';
+          btn.textContent = 'copy';
+          btn.addEventListener('click', () => window.copyText(copyText));
+          div.append(span, btn);
+          grid.appendChild(div);
+          count++;
+        }
       }
     }
     if (!count) grid.innerHTML = '<div class="pane-note">Ничего не найдено</div>';
