@@ -509,7 +509,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-soft); f
 .gg-btns { display: flex; gap: 6px; margin-top: 7px; }
 .row-gap { display: flex; align-items: center; gap: 10px; }
 
-/* DJIBUR Manuals */
+/* KILLASNAZZ manuals */
 .tab-page.manuals-page {
   --manual-bg: #080910;
   --manual-surface: rgba(24, 24, 33, .72);

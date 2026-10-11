@@ -9,6 +9,21 @@ const ALLOWED_BLOCKS = new Set([
   'heading', 'subheading', 'paragraph', 'list', 'ordered-list', 'divider',
   'note', 'link-block', 'table'
 ]);
+const BRAND_LOGO_SVG = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KILLASNAZZ">
+  <defs>
+    <linearGradient id="killasnazzBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a855f7"/>
+      <stop offset="0.52" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+    <filter id="killasnazzShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#170d2b" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#killasnazzBg)"/>
+  <path d="M20 14v36h8V37l14 13h11L35 32l17-18H41L28 28V14z" fill="#fff" filter="url(#killasnazzShadow)"/>
+  <path d="M20 14h8v36h-8z" fill="#fff" opacity="0.3"/>
+</svg>\n`;
 
 function getArg(name) {
   const index = process.argv.indexOf(name);
@@ -445,14 +460,12 @@ function buildSnapshot(sourceRoot) {
   if (new Set(slugs).size !== slugs.length) throw new Error('В навигации есть повторяющиеся slug');
   if (Object.keys(articles).length !== entries.length) throw new Error('Не все статьи были обработаны');
 
-  const logoSource = path.join(publicDir, 'logo-purple.svg');
-  if (!fs.existsSync(logoSource)) throw new Error('Не найден public/logo-purple.svg');
-  fs.copyFileSync(logoSource, path.join(OUTPUT_ASSETS, 'logo-purple.svg'));
+  fs.writeFileSync(path.join(OUTPUT_ASSETS, 'logo-purple.svg'), BRAND_LOGO_SVG, 'utf8');
 
   return {
     version: 1,
     defaultSlug: 'account-login',
-    sourceName: 'DJIBUR Manuals',
+    sourceName: 'KILLASNAZZ',
     sections,
     articles,
     stats: {

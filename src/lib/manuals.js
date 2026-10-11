@@ -439,7 +439,7 @@
     container.appendChild(content);
     const footer = element('footer', 'manual-article-footer');
     footer.append(
-      element('span', '', 'DJIBUR WORKTEAM'),
+      element('span', '', 'KILLASNAZZ'),
       element('span', '', 'Operator knowledge base')
     );
     container.appendChild(footer);

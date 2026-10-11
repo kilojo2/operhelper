@@ -34,6 +34,18 @@ test('Manuals is the seventh navigation destination and loads before app integra
   assert.match(app, /Manuals\.onShow\(\)/);
 });
 
+test('manual knowledge base uses only the KILLASNAZZ brand', () => {
+  const snapshot = fs.readFileSync(path.join(root, 'src', 'lib', 'manuals-data.js'), 'utf8');
+  const sync = fs.readFileSync(path.join(root, 'tools', 'sync-manuals.cjs'), 'utf8');
+  const logo = fs.readFileSync(path.join(root, 'src', 'manual-assets', 'logo-purple.svg'), 'utf8');
+  const brandedSources = [html, css, moduleSource, snapshot, sync, logo].join('\n');
+
+  assert.doesNotMatch(brandedSources, /DJIBUR/i);
+  assert.match(html, /<strong>KILLASNAZZ<\/strong>/);
+  assert.match(snapshot, /"sourceName":"KILLASNAZZ"/);
+  assert.match(logo, /aria-label="KILLASNAZZ"/);
+});
+
 test('manual UI includes inner navigation, search, persistence and responsive drawer', () => {
   for (const id of [
     'manualsSearch', 'manualsSearchResults', 'manualsMenuBtn', 'manualsSidebar',
@@ -72,4 +84,3 @@ test('manual renderer accepts only http and https external URLs and never inject
   assert.match(moduleSource, /root\.api\.openExternal\(url\)/);
   assert.match(moduleSource, /textContent\s*=/);
 });
-
