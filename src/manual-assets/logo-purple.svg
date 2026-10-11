@@ -1,0 +1,27 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Husk'd Label">
+  <defs>
+    <linearGradient id="hlBunnyBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a855f7"/>
+      <stop offset="0.5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#ec4899"/>
+    </linearGradient>
+    <radialGradient id="hlBunnySheen" cx="0.3" cy="0.22" r="0.85">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="hlBunnyShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="1.1" flood-color="#1b0b33" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#hlBunnyBg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#hlBunnySheen)"/>
+  <g fill="#ffffff" filter="url(#hlBunnyShadow)">
+    <ellipse cx="25.5" cy="20" rx="5" ry="14.5" transform="rotate(-17 25.5 20)"/>
+    <ellipse cx="38.5" cy="18.5" rx="5" ry="13.5" transform="rotate(9 38.5 18.5)"/>
+    <circle cx="32" cy="38" r="13"/>
+    <path d="M32 50.5 L22.5 46.5 L22.5 56 Z"/>
+    <path d="M32 50.5 L41.5 46.5 L41.5 56 Z"/>
+    <circle cx="32" cy="50.8" r="2.2"/>
+  </g>
+  <ellipse cx="27" cy="33" rx="5.5" ry="4" fill="#ffffff" opacity="0.35"/>
+</svg>

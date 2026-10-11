@@ -133,10 +133,11 @@ test('donation-bait layout defines desktop cards and a responsive mobile collaps
   assert.match(css, /\.db-(?:alternatives-grid|followup-grid)\s*\{[\s\S]{0,240}grid-template-columns\s*:/);
 });
 
-test('sidebar navigation remains unchanged with exactly six top-level destinations', () => {
+test('donation bait stays inside Generator while Manuals is the seventh top-level destination', () => {
   const nav = html.match(/<nav id=["']tabs["'][^>]*>([\s\S]*?)<\/nav>/i)?.[1] || '';
   const buttons = nav.match(/<button\b[^>]*class=["'][^"']*\btab\b[^"']*["']/gi) || [];
 
-  assert.equal(buttons.length, 6);
+  assert.equal(buttons.length, 7);
+  assert.match(nav, /data-tab=["']manuals["']/i);
   assert.doesNotMatch(nav, /data-tab=["'](?:donation|bait|donation-bait)["']/i);
 });

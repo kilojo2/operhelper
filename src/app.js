@@ -51,6 +51,7 @@
     });
     $$('.tab-page').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
     if (name === 'experience' && window.ExperienceTab) ExperienceTab.load();
+    if (name === 'manuals' && window.Manuals) window.Manuals.onShow();
   };
 
   function initTabs() {
@@ -1039,6 +1040,7 @@
       initSettings();
       initMusic();
       initTipMenu();
+      if (window.Manuals) window.Manuals.init();
       initGoalsGen();
       initDonationBait();
       Assistant.initLibrary(AppState.data.invitesRaw || '');
