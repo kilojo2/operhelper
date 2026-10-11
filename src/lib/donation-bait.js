@@ -315,7 +315,7 @@ ${analysis.hesitation
   const PRESSURE_PATTERN = /(?:\bprove\b|\bif\s+you\s+really\b|\bdon't\s+be\s+(?:cheap|greedy)\b|\bstop\s+being\s+(?:cheap|greedy)\b|\blast\s+chance\b|\bnow\s+or\s+never\b|\breal\s+man\b|\bcoward\b|\byou\s+(?:must|have\s+to)\b|докажи|если\s+ты\s+(?:правда|действительно)|не\s+жадничай|последний\s+шанс|сейчас\s+или\s+никогда|ты\s+должен)/iu;
   const PRIVATE_REINVITE_PATTERN = /(?:\b(?:come|go|join|take\s+me)\b[^.!?\n]{0,50}\bprivate\b|\bprivate\b[^.!?\n]{0,40}\b(?:show|room|session)\b[^.!?\n]{0,30}\b(?:join|come|go)\b|(?:переходи|пойдем|заходи|идем)[^.!?\n]{0,50}приват)/iu;
   const SALE_PATTERN = /(?:\b(?:tokens?|tip|pay|deal|offer)\b|\b(?:show\s+you|take\s+off|remove\s+it)\b|токен\w*|донат\w*|заплат\w*|предлаг\w*)/iu;
-  const ACCEPTANCE_PATTERN = /(?:\bno\s+worries\b|\bthat(?:'s|\s+is)\s+(?:totally\s+)?(?:okay|fine|alright)\b|\b(?:it(?:'s|\s+is)\s+)?(?:okay|all\s+good|totally\s+fine)\b|\bup\s+to\s+you\b|\bwe\s+can\s+just\b|\bof\s+course\b|без\s+проблем|вс[её]\s+хорошо|ничего\s+страшно|как\s+хочешь|решать\s+тебе|не\s+переживай|конечно|no\s+pasa\s+nada|est[\u00e1a]\s+bien|kein\s+problem|pas\s+de\s+souci|aucun\s+souci|va\s+bene|nessun\s+problema)/iu;
+  const ACCEPTANCE_PATTERN = /(?:\bno\s+worries\b|\bno\s+pressure\b|\b(?:i\s+)?understand\b|\byour\s+choice\b|\bwhatever\s+you\s+prefer\b|\bthat(?:'s|\s+is)\s+(?:totally\s+)?(?:okay|fine|alright)\b|\b(?:it(?:'s|\s+is)\s+)?(?:okay|all\s+good|totally\s+fine)\b|\bup\s+to\s+you\b|\bwe\s+can\s+(?:just\b|skip\b|leave\s+it\b)|\bwe\s+(?:don't|do\s+not)\s+have\s+to\b|\bonly\s+if\s+you\s+want\b|\bof\s+course\b|без\s+проблем|без\s+давления|вс[её]\s+хорошо|это\s+(?:совершенно\s+)?нормально|ничего\s+страшно|понимаю|как\s+хочешь|твой\s+выбор|решать\s+тебе|не\s+обязательно|можем\s+(?:не\s+делать|пропустить|оставить)|если\s+не\s+хочешь|как\s+тебе\s+(?:комфортно|удобно)|в\s+другой\s+раз|не\s+переживай|конечно|no\s+pasa\s+nada|est[\u00e1a]\s+bien|kein\s+problem|pas\s+de\s+souci|aucun\s+souci|va\s+bene|nessun\s+problema)/iu;
   const ACTION_CATEGORY_WORDS = Object.freeze({
     breast: ['breast', 'breasts', 'boob', 'boobs', 'tit', 'tits', 'nipple', 'nipples', 'грудь', 'груди', 'сиськи', 'соски'],
     butt: ['butt', 'ass', 'booty', 'попа', 'попу', 'попой', 'задница', 'задницу'],
@@ -324,7 +324,11 @@ ${analysis.hesitation
     underwear: ['panties', 'panty', 'thong', 'underwear', 'lingerie', 'трусики', 'трусы', 'белье', 'бельё'],
     oil: ['oil', 'масло', 'маслом'],
     toy: ['toy', 'toys', 'vibrator', 'dildo', 'игрушка', 'игрушку', 'вибратор', 'фаллоимитатор'],
-    feet: ['foot', 'feet', 'toes', 'стопа', 'стопы', 'ноги', 'пальцы'],
+    feet: [
+      'foot', 'feet', 'toe', 'toes', 'leg', 'legs', 'sock', 'socks', 'stocking', 'stockings',
+      'стопа', 'стопы', 'стопу', 'нога', 'ноги', 'ногу', 'ножка', 'ножки', 'ножку', 'ножек',
+      'ножках', 'палец', 'пальцы', 'носок', 'носки', 'носочек', 'носочки', 'носочках', 'чулок', 'чулки'
+    ],
     oral: ['oral', 'blowjob', 'lick', 'suck', 'минет', 'лизать', 'сосать'],
     penetration: ['penetrate', 'penetration', 'insert', 'проникновение', 'вставить'],
     masturbation: ['masturbate', 'masturbation', 'finger', 'fingering', 'мастурбация', 'мастурбировать', 'фингеринг'],
@@ -332,9 +336,10 @@ ${analysis.hesitation
   });
   const ACTION_DENIAL_PATTERN = /(?:\b(?:no|not|do\s+not|don't|cannot|can't|will\s+not|won't|never)\b|не\s+(?:делаю|буду|могу|предлагаю|снимаю|раздеваюсь)|никогда|нельзя)/iu;
   const BOUNDARY_COMPLIANCE_PATTERN = /(?:\b(?:keep|leave|stay|stays|remain)\b[^.!?\n]{0,30}\bon\b|\bkeep\b[^.!?\n]{0,30}\bcovered\b|ост(?:а|аё|ае)(?:н|т)\w*\s+(?:на\s+мне|надет)|не\s+(?:снимаю|раздеваюсь)|останется\s+на\s+мне)/iu;
+  const CLAUSE_SPLIT_PATTERN = /[.!?;\n]|\b(?:but|however)\b|(?<![\p{L}\p{N}])(?:но|однако)(?![\p{L}\p{N}])/iu;
 
   function actionCategories(value, affirmativeOnly) {
-    const clauses = String(value || '').split(/[.!?;\n]|\b(?:but|however)\b|но|однако/iu);
+    const clauses = String(value || '').split(CLAUSE_SPLIT_PATTERN);
     const found = new Set();
     clauses.forEach((clause) => {
       if (affirmativeOnly && ACTION_DENIAL_PATTERN.test(clause)) return;
@@ -347,13 +352,13 @@ ${analysis.hesitation
   }
 
   function hasAffirmativeForbidden(value, forbidden) {
-    return String(value || '').split(/[.!?;\n]|\b(?:but|however)\b|но|однако/iu).some((clause) =>
+    return String(value || '').split(CLAUSE_SPLIT_PATTERN).some((clause) =>
       !ACTION_DENIAL_PATTERN.test(clause) && hasDirectConflict(clause, forbidden));
   }
 
   function violatesBoundary(value, boundary) {
     if (!cleanText(boundary)) return false;
-    return String(value || '').split(/[.!?;\n]|\b(?:but|however)\b|но|однако/iu).some((clause) => {
+    return String(value || '').split(CLAUSE_SPLIT_PATTERN).some((clause) => {
       if (!clause.trim() || ACTION_DENIAL_PATTERN.test(clause) || BOUNDARY_COMPLIANCE_PATTERN.test(clause)) {
         return false;
       }

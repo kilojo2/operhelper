@@ -303,6 +303,33 @@ test('rejects invented action categories and affirmative forbidden promises', ()
   assert.doesNotThrow(() => DonationBait.parseResponse(boundaryStatement, request));
 });
 
+test('accepts feet and socks wording for a Russian custom target', () => {
+  const request = DonationBait.buildMessages(input({
+    target: 'other',
+    customTarget: 'ножки в серых носочках',
+    action: 'показать ножки в серых носочках',
+    tokens: '40',
+    context: '',
+    boundary: '',
+    tone: 'soft'
+  }), PROFILE);
+  const response = {
+    pricePlacement: 'after_question',
+    variants: [
+      phrase('Wanna see my feet in these gray socks?', 'Хочешь увидеть мои ножки в серых носочках?'),
+      phrase('Should I show u my toes in gray socks?', 'Показать тебе мои пальчики в серых носочках?'),
+      phrase('My little gray socks are hiding something cute...', 'Мои серые носочки скрывают кое-что милое...')
+    ],
+    followUps: {
+      asksPrice: phrase('I can show my feet for 40 tokens.', 'Могу показать ножки за 40 токенов.'),
+      agrees: phrase('Mmm, let me show u my gray socks.', 'Ммм, сейчас покажу тебе серые носочки.'),
+      hesitates: phrase('No pressure, we can skip it.', 'Без давления, можем пропустить.')
+    }
+  };
+
+  assert.doesNotThrow(() => DonationBait.parseResponse(response, request));
+});
+
 test('rejects explicit offer-boundary breaches while allowing a calm boundary statement', () => {
   const request = DonationBait.buildMessages(input({
     context: 'user: how much?',
