@@ -11,6 +11,8 @@ test('Cloudflare Worker is standalone and routes API before assets', () => {
   const config = JSON.parse(fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8'));
 
   assert.match(worker, /env\.DEEPSEEK_API_KEY/);
+  assert.match(worker, /chrome-extension:\/\/llckaejfpjhhhoehbojjanbckickokgn/);
+  assert.match(worker, /Access-Control-Allow-Origin/);
   assert.doesNotMatch(worker, /env\.(?:ACCESS_TOKEN|ADMIN_TOKEN)/);
   assert.doesNotMatch(worker, /need(?:Admin)?Token/);
   assert.doesNotMatch(webApi, /X-(?:Access|Admin)-Token|need(?:Admin)?Token|\bprompt\s*\(/);

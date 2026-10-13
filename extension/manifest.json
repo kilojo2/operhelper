@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "KILLASNAZZ Operator Helper",
+  "version": "1.0.0",
+  "description": "AI-помощник оператора: ответы, цели и предложения доната в боковой панели.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhwxpp6dA245QdTV61Nm55gOHOYnq5QSqXMWv3zxh2Zplw5BRJSsXzkbDQKkhZhyQLOvEzd92f8Oqmr9YcF83lQhtka836+XmIKSNSgNm1vYj3mU1SGPbLOlh3LxISH/78rYmNmxxWyxi7URtF7t36S0Mn1BZYMU3DDHI182/k0HRozjFIAwUX+CHk5229MzmDa14NFdy1M69Oh2OuYkGuXxCK1RI3F1ksUOcBo3SX3RPi+Ie4jQmWQbmDif4P6slC1wvkvFslbpDVnrXqrO3/kLcN/Gumk8MnOYtCHGCiIceYY3r2dZZ2nZe8SB88NVW146pPvJcTotJtxfzHIrwrQIDAQAB",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://operhelper.killasnazz.workers.dev/*",
+    "https://*.chaturbate.com/*",
+    "https://*.stripchat.com/*",
+    "https://*.bongacams.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Открыть KILLASNAZZ"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://operhelper.killasnazz.workers.dev/*",
+        "https://*.chaturbate.com/*",
+        "https://*.stripchat.com/*",
+        "https://*.bongacams.com/*"
+      ],
+      "js": [
+        "shared/site-adapters.js",
+        "content/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'self'"
+  }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://operhelper.killasnazz.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'self'">
+  <title>KILLASNAZZ Operator Helper</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-mark">K</div>
+    <div><strong>KILLASNAZZ</strong><span>Operator Helper</span></div>
+    <button id="refreshChatBtn" class="icon-btn" type="button" title="Обновить переписку" aria-label="Обновить переписку">↻</button>
+  </header>
+
+  <section class="connection-bar">
+    <i id="connectionDot"></i>
+    <div><strong id="platformName">Ручной режим</strong><span id="connectionText">Откройте поддерживаемый чат</span></div>
+  </section>
+
+  <nav class="mode-tabs" aria-label="Функции генератора">
+    <button class="mode-tab active" data-panel="assistant" type="button">Ассистент</button>
+    <button class="mode-tab" data-panel="goals" type="button">Цели</button>
+    <button class="mode-tab" data-panel="donation" type="button">Донат</button>
+  </nav>
+
+  <main>
+    <section id="panel-assistant" class="panel-page">
+      <div class="section-heading"><span>Текущий диалог</span><button id="readChatBtn" class="text-btn" type="button">Забрать чат</button></div>
+      <textarea id="assistantHistory" rows="8" maxlength="12000" placeholder="Переписка подставится автоматически. Также её можно вставить вручную."></textarea>
+      <div class="two-cols">
+        <label>Контекст<select id="assistantMode"><option value="auto">Авто</option><option value="public">Публичный чат</option><option value="private">Приват уже идёт</option></select></label>
+        <label>Стратегия<select id="assistantStrategy"><option value="auto">Авто</option><option value="slow">Медленно</option><option value="fast">Быстрее</option><option value="donate">Предложение доната</option></select></label>
+      </div>
+      <div class="button-row">
+        <button id="analyzeBtn" class="btn primary" type="button">Сгенерировать ответ</button>
+        <button id="openingBtn" class="btn secondary" type="button">Первое сообщение</button>
+      </div>
+      <p id="assistantStatus" class="status" aria-live="polite"></p>
+
+      <section id="assistantResult" class="result-area hidden">
+        <article class="answer-card primary-answer">
+          <div class="answer-head"><span>Рекомендуемый ответ</span><div><button class="small-action" data-copy-target="assistantMain" type="button">Копировать</button><button class="small-action accent" data-insert-target="assistantMain" type="button">Вставить</button></div></div>
+          <p id="assistantMain"></p>
+        </article>
+        <div class="alternative-grid">
+          <article class="answer-card"><span>Альтернатива 1</span><p id="assistantAlt1"></p><div><button class="small-action" data-copy-target="assistantAlt1" type="button">Копировать</button><button class="small-action" data-insert-target="assistantAlt1" type="button">Вставить</button></div></article>
+          <article class="answer-card"><span>Альтернатива 2</span><p id="assistantAlt2"></p><div><button class="small-action" data-copy-target="assistantAlt2" type="button">Копировать</button><button class="small-action" data-insert-target="assistantAlt2" type="button">Вставить</button></div></article>
+        </div>
+        <div class="regen-row">
+          <select id="replyTone" aria-label="Тон ответа"><option value="softer">Мягче</option><option value="bolder">Смелее</option><option value="shorter">Короче</option></select>
+          <button id="regenerateBtn" class="btn secondary" type="button">Перегенерировать ответ</button>
+        </div>
+        <details class="analysis-details"><summary>Служебный анализ</summary><pre id="assistantAnalysis"></pre></details>
+      </section>
+    </section>
+
+    <section id="panel-goals" class="panel-page hidden">
+      <div class="section-heading"><span>Генератор целей</span><span class="muted">10 новых вариантов</span></div>
+      <div id="goalTags" class="pill-row"></div>
+      <div class="button-row"><button id="generateGoalsBtn" class="btn primary" type="button">Сгенерировать ещё</button></div>
+      <p id="goalsStatus" class="status" aria-live="polite"></p>
+      <div id="goalsList" class="stack-list"></div>
+    </section>
+
+    <section id="panel-donation" class="panel-page hidden">
+      <div class="section-heading"><span>Байт на донат</span><span class="muted">Приват уже идёт</span></div>
+      <label>Объект<select id="donationTarget"><option value="breast">Грудь</option><option value="butt">Попа</option><option value="other">Другое</option></select></label>
+      <label id="customTargetRow" class="hidden">Свой вариант<input id="donationCustomTarget" maxlength="50" placeholder="Например: ножки в носочках"></label>
+      <label>Точное действие<input id="donationAction" maxlength="120" placeholder="Что именно модель сделает"></label>
+      <label>Цена в токенах<input id="donationTokens" type="number" min="1" max="999999" inputmode="numeric" placeholder="200"></label>
+      <label>Последние сообщения<textarea id="donationContext" rows="5" maxlength="6000" placeholder="Можно забрать из текущего чата или вставить вручную"></textarea></label>
+      <label>Дополнительное ограничение<input id="donationBoundary" maxlength="240" placeholder="Например: бельё полностью не снимаю"></label>
+      <label>Тон<select id="donationTone"><option value="playful">Игриво</option><option value="soft">Мягко</option><option value="bold">Смело</option></select></label>
+      <button id="generateDonationBtn" class="btn primary full" type="button">Сгенерировать предложение</button>
+      <p id="donationStatus" class="status" aria-live="polite"></p>
+      <section id="donationResult" class="result-area hidden">
+        <div id="donationVariants" class="stack-list"></div>
+        <div class="section-heading follow-title"><span>Если пользователь…</span></div>
+        <div id="donationFollowups" class="stack-list"></div>
+      </section>
+    </section>
+
+    <details id="settingsPanel" class="settings-panel">
+      <summary>Профиль и настройки</summary>
+      <div class="settings-body">
+        <div class="two-cols"><label>Имя<input id="profileName" maxlength="80"></label><label>Возраст<input id="profileAge" type="number" min="18" max="99"></label></div>
+        <label>Язык ответов<input id="profileLanguage" value="English"></label>
+        <label>Типаж / внешность<input id="profileLook"></label>
+        <label>Характер<textarea id="profilePersona" rows="2"></textarea></label>
+        <label>Голос и привычки письма<textarea id="profileVoice" rows="2"></textarea></label>
+        <label>Примеры сообщений<textarea id="profileExamples" rows="3"></textarea></label>
+        <label>Доступные действия и цены<textarea id="profileOffers" rows="3"></textarea></label>
+        <label>Можно упоминать<input id="profileAllowed"></label>
+        <label>Запрещено<input id="profileForbidden"></label>
+        <div class="two-cols"><label>Модель<select id="profileModel"><option value="deepseek-chat">deepseek-chat</option><option value="deepseek-reasoner">deepseek-reasoner</option></select></label><label>Креативность<input id="profileTemperature" type="number" min="0" max="2" step="0.1" value="1.3"></label></div>
+        <div class="button-row"><button id="saveProfileBtn" class="btn primary" type="button">Сохранить</button><button id="importProfileBtn" class="btn secondary" type="button">Импорт с сайта</button></div>
+        <p id="profileStatus" class="status" aria-live="polite"></p>
+        <p class="privacy-note">API-ключ хранится только в Cloudflare и никогда не сохраняется расширением.</p>
+      </div>
+    </details>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="vendor/parser.js"></script>
+  <script src="vendor/assistant-result.js"></script>
+  <script src="vendor/ai-json.js"></script>
+  <script src="vendor/goal-generator.js"></script>
+  <script src="vendor/donation-bait.js"></script>
+  <script src="vendor/prompts.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

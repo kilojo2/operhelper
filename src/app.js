@@ -526,15 +526,7 @@
   }
 
   /* ---------- Генератор целей (хештеги) ---------- */
-  const GG_TAGS = [
-    { tag: 'feet', label: '#feet 🦶' },
-    { tag: 'ass', label: '#ass 🍑' },
-    { tag: 'tits', label: '#tits 🍒' },
-    { tag: 'face', label: '#face 😍' },
-    { tag: 'lips', label: '#lips 👄' },
-    { tag: 'finger', label: '#finger 🖖' },
-    { tag: 'pussy', label: '#pussy 🍓' }
-  ];
+  const GG_TAGS = window.GoalGenerator ? window.GoalGenerator.TAGS : [];
   const MY_GOALS_KEY = 'oh_my_goals_v1';
   let ggTag = null;
   let ggItems = [];
@@ -591,35 +583,19 @@
       }));
   }
 
-  const GOAL_JSON_SYSTEM = [
-    'Ты — генератор tip-menu goals для совершеннолетней вебкам-модели.',
-    'Верни только валидный JSON-объект без markdown и пояснений.',
-    'Точная схема: {"goals":[{"en":"English goal with 1-2 emoji","ru":"Точный перевод с 1-2 эмодзи"}]}.',
-    'Каждая цель — короткая фраза-действие от лица модели и строго соответствует запрошенной категории.',
-    'В JSON должно быть ровно 10 разных элементов; оба поля в каждом элементе обязательны.'
-  ].join('\n');
-
   async function requestAiGoalBatch(cfg, retry) {
     const avoid = ggItems.slice(-30).map((item) => item.en).filter(Boolean);
-    const instruction = [
-      `Категория: #${ggTag}. Сгенерируй 10 новых целей.`,
-      avoid.length ? `Не повторяй эти цели: ${JSON.stringify(avoid)}.` : '',
-      retry ? 'Предыдущий ответ не прошёл проверку. Верни JSON заново и точно по схеме.' : ''
-    ].filter(Boolean).join('\n');
     const response = await window.api.chat({
       model: cfg.model || 'deepseek-chat',
       temperature: retry ? 0.2 : 0.75,
       maxTokens: 1800,
       responseFormat: 'json_object',
-      messages: [
-        { role: 'system', content: GOAL_JSON_SYSTEM },
-        { role: 'user', content: instruction }
-      ]
+      messages: window.GoalGenerator.buildMessages(ggTag, avoid, retry)
     });
     if (!response || !response.ok) {
       throw new Error(response && response.error ? response.error : 'Ошибка генерации');
     }
-    return window.AiJson.parseGoalItems(response.content, 10);
+    return window.GoalGenerator.parseResponse(response.content, window.AiJson, 10);
   }
 
   async function generateAiGoals() {

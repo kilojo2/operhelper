@@ -8,6 +8,7 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'OPTIONS']);
 const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
 const MAX_BODY = 512 * 1024;
 const MAX_CHAT_CHARS = 200 * 1024;
+const EXTENSION_ORIGIN = 'chrome-extension://llckaejfpjhhhoehbojjanbckickokgn';
 
 function json(status, body, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
@@ -19,6 +20,18 @@ function json(status, body, extraHeaders = {}) {
       ...extraHeaders
     }
   });
+}
+
+function withCors(response, request) {
+  const origin = String(request.headers.get('Origin') || '');
+  const ownOrigin = new URL(request.url).origin;
+  if (origin !== EXTENSION_ORIGIN && origin !== ownOrigin) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Access-Control-Allow-Origin', origin);
+  headers.set('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type');
+  headers.set('Vary', 'Origin');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 async function readJson(request) {
@@ -193,14 +206,14 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     if (!ALLOWED_METHODS.has(request.method)) {
-      return json(405, { error: 'Method Not Allowed' }, { Allow: 'GET, HEAD, POST, OPTIONS' });
+      return withCors(json(405, { error: 'Method Not Allowed' }, { Allow: 'GET, HEAD, POST, OPTIONS' }), request);
     }
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+    if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request);
 
     try {
-      return await handleApi(request, env, url.pathname);
+      return withCors(await handleApi(request, env, url.pathname), request);
     } catch (error) {
-      return json(400, { ok: false, error: error.message || 'Некорректный запрос' });
+      return withCors(json(400, { ok: false, error: error.message || 'Некорректный запрос' }), request);
     }
   }
 };
